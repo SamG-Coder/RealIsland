@@ -1,0 +1,42 @@
+diff --git a/scripts/test-gpu.py b/scripts/test-gpu.py
+--- a/scripts/test-gpu.py
++++ b/scripts/test-gpu.py
+@@ -13,3 +13,3 @@
+ with sync_playwright() as p:
+-    options={'headless':True,'args':['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-webgpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
++    options={'headless':True,'args':['--no-sandbox','--disable-gpu-watchdog','--disable-dev-shm-usage','--enable-unsafe-webgpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
+     if os.environ.get('CHROMIUM_PATH'): options['executable_path']=os.environ['CHROMIUM_PATH']
+@@ -22,3 +22,3 @@
+     try:
+-        page.goto(URL+'?quality='+QUALITY,wait_until='domcontentloaded',timeout=60000)
++        page.goto(URL+'?quality='+QUALITY+'&manual=1',wait_until='domcontentloaded',timeout=60000)
+         page.wait_for_function('window.realIsland?.ready || window.realIsland?.errors.length',timeout=240000)
+@@ -26,4 +26,11 @@
+         if not status['ready'] or status['errors']: raise RuntimeError(json.dumps(status))
+-        page.wait_for_function('realIsland.renderer.frameCount>=3 || realIsland.errors.length',timeout=240000)
++        log('Pipelines ready. Inspecting initialized compute state before rendering.')
+         page.evaluate('realIsland.stop()');page.evaluate('realIsland.sim.runtime.idle()')
++        result['beforeRendering']=page.evaluate('realIsland.sim.diagnostics()')
++        log('Initialized state: '+json.dumps(result['beforeRendering']))
++        log('Executing the first grass/water compute frame.')
++        page.evaluate('''async()=>{const a=realIsland,b=a.cameraBasis(a.camera);a.sim.frame(1/60,false,a.camera,b,a.renderer.width/a.renderer.height);await a.sim.runtime.idle();}''')
++        log('Compute completed. Executing the first render frame.')
++        page.evaluate('''async()=>{const a=realIsland,b=a.cameraBasis(a.camera);a.renderer.frame(a.camera,b,0);await a.sim.runtime.idle();}''')
++        log('First render completed.')
+         page.screenshot(path=str(OUT/'island.png'),timeout=60000)
+diff --git a/src/main.js b/src/main.js
+--- a/src/main.js
++++ b/src/main.js
+@@ -7,3 +7,3 @@
+ const seed=Math.max(0,Math.min(99999999,Number(params.get('seed')||1741)))>>>0;
+-const errors=[],log=[];let sim,renderer,paused=false,busy=false,last=0,stopped=false,previousCompletion=0,frames=[],lastHud=0;
++const errors=[],log=[];let sim,renderer,paused=false,busy=false,last=0,stopped=params.has('manual'),previousCompletion=0,frames=[],lastHud=0;
+ const api=window.realIsland={ready:false,errors,log,quality,seed,stop(){stopped=true;},resume(){stopped=false;last=0;requestAnimationFrame(frame);}};
+diff --git a/src/source-assembly.js b/src/source-assembly.js
+--- a/src/source-assembly.js
++++ b/src/source-assembly.js
+@@ -21,3 +21,3 @@
+   const helpers = ['worldHash','randomRiver','boundaryRandom','riverCenter','riverWidth','forkAmount','forkSide','branchCenter','channelDistance','ledgeStart','ledgeWidth','ledgeHeight','riverDatum','riverLevel','terrainNoise'].map(take).join('\n');
+-  let linked = helpers.replaceAll('World[1] + z / 110.0f','World[1] + (z + 150.0f) / 330.0f');
++  let linked = helpers.replaceAll('World[1] + z / 110.0f','World[1] + (z + 150.0f) / 110.0f');
+   linked = replaceOnce(linked,'return base + randomRiver(World, 901 + tier) * 9.0f +\n         2.0f * sinf(x * .19f + randomRiver(World, 941 + tier) * 6.28f);',
