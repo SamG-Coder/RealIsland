@@ -1,0 +1,59 @@
+name: Build and validate RealIsland
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ['README.md', 'docs/**', 'reports/**']
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: realisland-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build actual CUDA kernels and static site
+        run: npm run build
+      - name: Run integration unit tests
+        run: npm test | tee reports/unit-tests.txt
+      - name: Install browser validation dependencies
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Execute browser WebGPU validation on SwiftShader
+        run: |
+          node scripts/serve.mjs > reports/server.log 2>&1 &
+          python scripts/test-gpu.py
+        env:
+          TEST_QUALITY: test
+      - name: Package source with flattened dependencies
+        if: always()
+        run: python scripts/package.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: realisland-validation
+          path: |
+            reports/
+            RealIsland-source.zip
+            RealIsland-source.sha256
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: realisland-static-site
+          path: dist/
+          retention-days: 14
