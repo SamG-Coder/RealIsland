@@ -1,16 +1,21 @@
+import {SurvivalGame,installGameUI} from './game.js';
+import {readSave} from './game-core.js';
 import {IslandSimulation} from './simulation.js';
 import {IslandRenderer} from './renderer.js';
 import {qualityFor} from './quality.js';
 import {createCamera,cameraBasis,VIEWS,pointCamera} from './camera.js';
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.search);
+const explore=params.get('mode')==='explore'||(params.has('manual')&&params.get('mode')!=='game');
+if(!explore)document.body.classList.add('game');
+const priorSave=readSave(localStorage).save;
 const quality=params.get('quality')||localStorage.getItem('realisland-quality')||((matchMedia('(pointer:coarse)').matches)?'low':'balanced');
-const seed=Math.max(0,Math.min(99999999,Number(params.get('seed')||1741)))>>>0;
-const errors=[],log=[];let sim,renderer,paused=false,busy=false,last=0,stopped=params.has('manual'),previousCompletion=0,frames=[],lastHud=0;
+const seed=Math.max(0,Math.min(99999999,Number(params.get('seed')||(!explore&&priorSave?.seed)||1741)))>>>0;
+const errors=[],log=[];let sim,renderer,game,paused=false,busy=false,last=0,stopped=params.has('manual'),previousCompletion=0,frames=[],lastHud=0;
 const api=window.realIsland={ready:false,errors,log,quality,seed,stop(){stopped=true;},resume(){stopped=false;last=0;requestAnimationFrame(frame);}};
 function progress(message,value){$('stage').textContent=message;$('progress').style.width=`${Math.min(value,1)*100}%`;$('percent').textContent=`${Math.round(Math.min(value,1)*100)}%`;log.push(message);$('load-log').textContent=log.slice(-8).map((x,i)=>`${i===7?'›':'✓'} ${x}`).join('\n');console.info('[RealIsland]',message);}
 function fail(error){const message=error?.message||String(error);if(errors.includes(message))return;errors.push(message);console.error(error);stopped=true;$('loading').hidden=false;$('loading').classList.add('failed');$('stage').textContent='Startup / GPU error';$('load-log').textContent=message+'\n\nOpen the browser console for details. No substitute renderer is used.';}
 function photo(){document.body.classList.toggle('photo');$('restore').hidden=!document.body.classList.contains('photo');}
-const controls=createCamera($('view'),key=>{if(key==='KeyH')photo();if(key==='KeyP')togglePause();const views={Digit1:'island',Digit2:'meadow',Digit3:'river',Digit4:'shore',Digit5:'estuary',Digit6:'surf'};if(views[key])goto(views[key]);});
+const controls=createCamera($('view'),key=>{if(key==='KeyH')photo();if(key==='KeyP')togglePause();const views={Digit1:'island',Digit2:'meadow',Digit3:'river',Digit4:'shore',Digit5:'estuary',Digit6:'surf'};if(views[key])goto(views[key]);},()=>explore);
 function togglePause(){paused=!paused;$('pause').textContent=paused?'Resume water':'Pause water';}
 async function goto(name){const v=VIEWS[name];if(!v||!sim)return;let position=[...v.position];
  let target=[...v.target];
@@ -48,7 +53,7 @@ function wire(){
 function frame(timestamp) {
  if(stopped)return;requestAnimationFrame(frame);if(busy||document.hidden)return;
  const now=timestamp/1000,dt=last?Math.min(.1,now-last):1/60;last=now;
- try{busy=true;const basis=controls.update(dt);sim.frame(dt,paused,controls.camera,basis,renderer.width/renderer.height);renderer.frame(controls.camera,basis,now);
+ try{busy=true;const basis=game?game.update(dt):controls.update(dt);sim.frame(dt,game?game.phase!=='playing':paused,controls.camera,basis,renderer.width/renderer.height);renderer.frame(controls.camera,basis,now);game?.syncCollision();
  sim.device.queue.onSubmittedWorkDone().then(()=>{const finish=performance.now();if(previousCompletion){frames.push(finish-previousCompletion);if(frames.length>240)frames.shift();}previousCompletion=finish;busy=false;
  if(now-lastHud>.75){const recent=frames.slice(-60),mean=recent.reduce((a,b)=>a+b,0)/Math.max(1,recent.length);$('fps').textContent=`${mean>0?(1000/mean).toFixed(0):'—'} FPS`;$('resolution').textContent=`${renderer.width} × ${renderer.height}`;$('sim-clock').textContent=`${sim.time.toFixed(1)} s · ${sim.grid.nx}² cells`;
  if($('adaptive').checked&&quality!=='test'&&frames.length>45){const old=renderer.scale;if(mean>23)renderer.scale=Math.max(.50,old-.035);else if(mean<15.5)renderer.scale=Math.min(renderer.q.scale,old+.015);}
@@ -59,7 +64,10 @@ function frame(timestamp) {
 async function start(){try{
  sim=await IslandSimulation.create(qualityFor(quality),seed,progress,fail);renderer=await IslandRenderer.create($('view'),sim,progress);
  Object.assign(api,{sim,renderer,camera:controls.camera,cameraBasis,goto,diagnostics,togglePause});Object.defineProperty(api,'paused',{get:()=>paused});wire();
- if(VIEWS[params.get('view')])await goto(params.get('view'));
+ if(explore){if(VIEWS[params.get('view')])await goto(params.get('view'));}
+ else {await goto('island');installGameUI();game=new SurvivalGame(sim,renderer,controls.camera,quality);api.game=game;
+  if(params.get('resume')==='1'&&priorSave&&priorSave.seed===seed){game.start(priorSave);params.delete('resume');history.replaceState(null,'','?'+params);}
+ }
  $('loading').hidden=true;api.ready=true;requestAnimationFrame(frame);
 }catch(error){fail(error);}}
 addEventListener('error',event=>fail(event.error||event.message));addEventListener('unhandledrejection',event=>fail(event.reason));start();

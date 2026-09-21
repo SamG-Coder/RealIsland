@@ -82,10 +82,16 @@ export class IslandRenderer {
     this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT))};
     this.forest=new ForestVisibility(d,this.sim.Trees,this.sim.treeCount);await this.forest.initialize();
     this.treeGeometry=TREE_SEGMENTS.map(n=>this.uploadIndices('tree branch LOD '+n,makeBranchIndices(192,n)));
+    this.actorBuffer=this.buffer('survivor and resources',256*48,GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST);this.actorCount=0;
+    const sphere=new Float32Array(13*9*8);
+    for(let j=0;j<9;j++)for(let i=0;i<13;i++){const a=i/12*Math.PI*2,p=j/8*Math.PI,k=(j*13+i)*8,x=Math.sin(p)*Math.cos(a),y=Math.cos(p),z=Math.sin(p)*Math.sin(a);sphere.set([x,y,z,0,x,y,z,0],k);}
+    this.actorMesh=this.buffer('shared rounded actor mesh',sphere.byteLength,GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST);d.queue.writeBuffer(this.actorMesh,0,sphere);
+    this.actorIndices=this.uploadIndices('rounded actor indices',makeGridIndices(13,9));
     const alpha={color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}};
     const recipes=[
       ['environment',shaders.environmentShader(this.q.cloudSteps),'screenVs','environmentFs',false],
       ['light',shaders.lightShader,'screenVs','lightFs',false],['sky',shaders.skyShader,'screenVs','skyFs',true,{},false],
+      ['actors',shaders.actorShader,'actorVs','actorFs',true],
       ['terrain',shaders.terrainShader,'terrainVs','terrainFs',true],['rocks',shaders.rockShader,'rockVs','rockFs',true],...TREE_SEGMENTS.map((n,lod)=>['foliage'+lod,shaders.foliageShader,'foliageVs','foliageFs',true,{TREE_SEGMENTS:n,TREE_LOD:lod}]),
       ['grass0',shaders.residentGrass,'vs','fs',true,{SEGMENTS:5}],['grass1',shaders.residentGrass,'vs','fs',true,{SEGMENTS:2}],['grass2',shaders.residentGrass,'vs','fs',true,{SEGMENTS:1}],
       ['seeds',shaders.residentGrass,'seedVs','seedFs',true],
@@ -105,7 +111,7 @@ export class IslandRenderer {
     const postModule=await this.module(shaders.postShader,'post processing');
     this.pipelines.post=await d.createRenderPipelineAsync({label:'tone map and edge filter',layout:'auto',vertex:{module:postModule,entryPoint:'screenVs'},fragment:{module:postModule,entryPoint:'postFs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
     this.groups={};
-    for(const mirror of [false,true])for(const kind of ['terrain','rocks','foliage','spray','sky','grass0','grass1','grass2','seeds'])this.groups[(mirror?'m:':'')+kind]=this.worldGroup(kind,mirror);
+    for(const mirror of [false,true])for(const kind of ['terrain','rocks','foliage','actors','spray','sky','grass0','grass1','grass2','seeds'])this.groups[(mirror?'m:':'')+kind]=this.worldGroup(kind,mirror);
     this.patchGeometry=this.uploadIndices('0.3 m coastal mesh',makeGridIndices(this.sim.coast.grid.nx,this.sim.coast.grid.nz));
     this.groups.patch=this.worldGroup('terrain',false,false,this.sim.coast,this.patchUniform);
     this.groups.coastSpray=this.worldGroup('spray',false,false,this.sim.coast,this.patchUniform);
@@ -129,9 +135,10 @@ export class IslandRenderer {
       const slot=kind==='seeds'?3:Number(kind.slice(5));binding[3].resource={buffer:s.visible.gpuBuffer,offset:slot*s.count*4,size:s.count*4};binding[4].resource=resource(s.biology);
     }else if(kind==='rocks')binding[0].resource=resource(s.RockWet);
     if(kind==='terrain'){binding[0].resource=resource(this.sim.Eta);binding[1].resource=resource(this.sim.S);}
+    if(kind==='actors')binding[0].resource=resource(this.actorBuffer);
     if(kind==='foliage')binding[3].resource=resource(this.forest.views[mirror?1:0].ids);
-    if(['terrain','rocks','foliage'].includes(kind))binding[2].resource=resource(this.sim.ForestShade);
-    const geometry={terrain:s.Terrain,rocks:s.RockMesh,foliage:s.Foliage,spray:s.Spray}[kind];
+    if(['terrain','rocks','foliage','actors'].includes(kind))binding[2].resource=resource(this.sim.ForestShade);
+    const geometry={actors:this.actorMesh,terrain:s.Terrain,rocks:s.RockMesh,foliage:s.Foliage,spray:s.Spray}[kind];
     return this.device.createBindGroup({layout:this.worldLayout,entries:[{binding:0,resource:{buffer:mirror?this.mirrorCamera:this.camera}},...binding,...this.materials.entries,
       {binding:9,resource:resource(s.S)},{binding:10,resource:{buffer:uniform}},{binding:11,resource:resource(s.Eta)},
       {binding:12,resource:(blankLight?this.dummyColor:this.light).view},{binding:13,resource:resource(geometry)}]});
@@ -170,6 +177,7 @@ export class IslandRenderer {
       pass.setPipeline(this.pipelines['foliage'+lod]);pass.setBindGroup(0,this.groups[prefix+'foliage']);
       pass.setIndexBuffer(this.treeGeometry[lod].buffer,'uint32');pass.drawIndexedIndirect(this.forest.views[mirror?1:0].commands,lod*20);
     }
+    if(this.actorCount&&!only){pass.setPipeline(this.pipelines.actors);pass.setBindGroup(0,this.groups[prefix+'actors']);pass.setIndexBuffer(this.actorIndices.buffer,'uint32');pass.drawIndexed(this.actorIndices.count,this.actorCount);}
     if(!mirror&&(!only||only==='terrain')){pass.setPipeline(this.pipelines.terrain);pass.setBindGroup(0,this.groups.patch);pass.setIndexBuffer(this.patchGeometry.buffer,'uint32');pass.drawIndexed(this.patchGeometry.count);}
     if(grass&&(!only||only==='grass')){for(let i=0;i<3;i++){pass.setPipeline(this.pipelines['grass'+i]);pass.setBindGroup(0,this.groups['grass'+i]);pass.drawIndirect(this.sim.commands.gpuBuffer,i*16);}
       pass.setPipeline(this.pipelines.seeds);pass.setBindGroup(0,this.groups.seeds);pass.drawIndirect(this.sim.commands.gpuBuffer,48);
@@ -178,6 +186,7 @@ export class IslandRenderer {
     }
     pass.end();
   }
+  updateActors(data){this.actorCount=data.length/12;if(data.length)this.device.queue.writeBuffer(this.actorBuffer,0,data);}
   frame(camera,basis,now,stage='all') {
     this.resize();const d=this.device,g=this.sim.grid,s=this.sim.settings;
     d.queue.writeBuffer(this.camera,0,this.cameraData(camera,basis));d.queue.writeBuffer(this.mirrorCamera,0,this.cameraData(camera,basis,true));

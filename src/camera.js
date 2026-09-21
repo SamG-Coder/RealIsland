@@ -10,14 +10,14 @@ export const VIEWS={
   estuary:{name:'River mouth',position:[130,55,900],target:[55,1,670]}
 };
 export function pointCamera(camera,position,target){[camera.x,camera.y,camera.z]=position;const dx=target[0]-camera.x,dy=target[1]-camera.y,dz=target[2]-camera.z;camera.yaw=Math.atan2(dx,-dz);camera.pitch=Math.atan2(dy,Math.hypot(dx,dz));}
-export function createCamera(canvas,onKey=()=>{}) {
+export function createCamera(canvas,onKey=()=>{},enabled=()=>true) {
  const camera={x:170,y:112,z:325,yaw:0,pitch:-.3},keys=new Set();pointCamera(camera,VIEWS.island.position,VIEWS.island.target);
  let dragging=false,lastX=0,lastY=0;
- canvas.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId);canvas.focus();});
+ canvas.addEventListener('pointerdown',e=>{if(!enabled())return;dragging=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId);canvas.focus();});
  canvas.addEventListener('pointermove',e=>{if(!dragging)return;look(camera,e.clientX-lastX,e.clientY-lastY);lastX=e.clientX;lastY=e.clientY;});
  canvas.addEventListener('pointerup',()=>dragging=false);canvas.addEventListener('pointercancel',()=>dragging=false);
- canvas.addEventListener('wheel',e=>{e.preventDefault();const b=cameraBasis(camera),speed=Math.sign(e.deltaY)*-8;camera.x+=b.forward[0]*speed;camera.y+=b.forward[1]*speed;camera.z+=b.forward[2]*speed;},{passive:false});
- addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();keys.add(e.code);if(!e.repeat)onKey(e.code);});
+ canvas.addEventListener('wheel',e=>{if(!enabled())return;e.preventDefault();const b=cameraBasis(camera),speed=Math.sign(e.deltaY)*-8;camera.x+=b.forward[0]*speed;camera.y+=b.forward[1]*speed;camera.z+=b.forward[2]*speed;},{passive:false});
+ addEventListener('keydown',e=>{if(!enabled())return;if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();keys.add(e.code);if(!e.repeat)onKey(e.code);});
  addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>{keys.clear();dragging=false;});
  document.addEventListener('visibilitychange',()=>{if(document.hidden)keys.clear();});
  for(const button of document.querySelectorAll('[data-move]')){const key=button.dataset.move;button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);keys.add(key);});for(const event of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(event,()=>keys.delete(key));}

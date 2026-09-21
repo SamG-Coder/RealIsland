@@ -156,6 +156,23 @@ fn diffuseSurface(color:vec3f,n:vec3f,p:vec3f,wet:f32)->vec3f {
  return aerial(pow(max(color,vec3f(0.)),vec3f(2.2))*(ambient+direct)+vec3f(spec),p);
 }
 `;
+export const actorShader=common+surfaceVertex+/* wgsl */`
+@group(0) @binding(1) var<storage,read> actors:array<vec4f>;
+fn rotateActor(p:vec3f,yaw:f32,tilt:f32)->vec3f {
+ let q=vec3f(p.x,cos(tilt)*p.y-sin(tilt)*p.z,sin(tilt)*p.y+cos(tilt)*p.z);
+ return vec3f(cos(yaw)*q.x-sin(yaw)*q.z,q.y,sin(yaw)*q.x+cos(yaw)*q.z);
+}
+@vertex fn actorVs(@builtin(vertex_index) i:u32,@builtin(instance_index) instance:u32)->Surface{
+ let origin=actors[instance*3u];let scale=actors[instance*3u+1u];let pose=actors[instance*3u+2u];
+ let a=geometry[i*2u];let b=geometry[i*2u+1u];let p=origin.xyz+rotateActor(a.xyz*scale.xyz,scale.w,pose.x);
+ var o:Surface;o.world=p;o.p=project(p);o.normal=rotateActor(b.xyz/scale.xyz,scale.w,pose.x);o.data=vec4f(origin.w,0.,0.,0.);o.uv=vec2f(0.);return o;
+}
+@fragment fn actorFs(v:Surface)->@location(0) vec4f{
+ let colors=array<vec3f,8>(vec3f(.70,.34,.12),vec3f(.16,.20,.21),vec3f(.64,.45,.32),vec3f(.17,.115,.075),vec3f(.26,.30,.18),vec3f(.10,.12,.12),vec3f(.19,.32,.09),vec3f(.30,.06,.18));
+ let color=colors[min(u32(round(v.data.x)),7u)]*(.96+.04*noise(v.world.xz*35.));
+ return vec4f(diffuseSurface(color,normalize(v.normal),v.world,0.),1.);
+}
+`;
 export const terrainShader=common+surfaceVertex+/* wgsl */`
 @group(0) @binding(2) var<storage,read> parentState:array<f32>;
 @vertex fn terrainVs(@builtin(vertex_index) i:u32)->Surface {

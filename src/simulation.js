@@ -64,8 +64,11 @@ export class IslandSimulation {
     for(let i=0;i<jobs.length;i+=8){const batch=this.runtime.batch();for(const job of jobs.slice(i,i+8))this.dispatch(batch,job.entry,job.extra,job.count);batch.submit();await this.runtime.idle();progress('Growing the island on the GPU',.33+.20*(i+8)/jobs.length);}
     // One explicit startup readback measures the generated catchment. No evolving
     // field is read back during ordinary animation.
-    this.hydrology=headwaterBudget(await this.runtime.read(this.S),this.grid);
-    const forest=await this.runtime.read(this.Trees),shade=new Float32Array(this.n).fill(1),g=this.grid;
+    const initialState=await this.runtime.read(this.S);
+    this.hydrology=headwaterBudget(initialState,this.grid);
+    // Reuse the existing startup readback for static character collision.
+    this.collisionData={bed:initialState.slice(0,this.n),ground:initialState.slice(this.n,2*this.n),depth:initialState.slice(2*this.n,3*this.n)};
+    const forest=await this.runtime.read(this.Trees);this.treeDescriptors=forest;const shade=new Float32Array(this.n).fill(1),g=this.grid;
     for(let t=0;t<this.treeCount;t++){
       const x=forest[t*4],z=forest[t*4+2],h=forest[t*4+3];if(h<1)continue;
       const cx=x+.48/.71*h*.4,cz=z+.51/.71*h*.4,r=h*.28+2;

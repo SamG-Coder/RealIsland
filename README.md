@@ -31,12 +31,26 @@ npm start
 
 Open http://localhost:5180/?quality=high&seed=1741 for High quality.
 
-## Controls
+## Survival prototype
 
-Drag to look; WASD/arrows to fly; Q/E for height; Shift for speed. Keys 1–6 select
-views. Key 6 is the water-level surf close-up. H hides the interface, P pauses water. Field controls adjust river flow,
-swell, wind, meadow season, moisture, clouds, tide and exposure. Quality changes
-all major system budgets together.
+The default page opens the first-person survival title menu. Start a new journey
+or continue the local save. WASD/arrows move, Shift sprints, Space jumps, and
+clicking the scene captures the mouse for looking around. Escape releases the
+mouse and pauses; I opens the backpack; E gathers berries or drinks freshwater.
+Hold and drag to look if mouse capture is unavailable.
+
+Progress autosaves every 30 seconds of play and when leaving the page. Pause also
+offers Save and Save & return to title. Saves are stored in this browser on this
+device; clearing site data removes them. Food, water, stamina, health, inventory,
+position, island seed and harvested bush cooldowns persist. Starting a new journey
+asks before replacing an existing save.
+
+For the original scenery and simulation controls, open `?mode=explore`.
+There, drag to look, WASD/arrows fly, Q/E change height, Shift increases speed,
+1–6 select views, H hides the interface and P pauses water.
+
+See [the survival foundation](docs/survival-foundation.md) for implementation
+limits and validation.
 
 ## Build and validate
 
