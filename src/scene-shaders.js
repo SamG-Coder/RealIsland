@@ -356,7 +356,8 @@ ${oceanWgsl}
   level=mix(level,isle.weather.x,blend);slope=mix(slope,outer.yz,blend);
    if(isle.grid.w==1u){
     let edge=min(min(pos.x-isle.coastBounds.x,isle.coastBounds.z-pos.x),min(pos.y-isle.coastBounds.y,isle.coastBounds.w-pos.y));
-    let fine=smoothstep(8.,32.,edge);let d=isle.view.w;
+    let blendEnd=min(32.,max(12.,min(f32(isle.grid.x)*isle.domain.z,f32(isle.grid.y)*isle.domain.w)*.5-24.));
+    let fine=smoothstep(8.,blendEnd,edge);let d=isle.view.w;
     let cs=vec2f(coarseLevel(pos+vec2f(d,0.))-coarseLevel(pos-vec2f(d,0.)),coarseLevel(pos+vec2f(0.,d))-coarseLevel(pos-vec2f(0.,d)))/(2.*d);
     level=mix(coarseLevel(pos),level,fine);slope=mix(cs,slope,fine);
     foam=mix(vec2f(parentField(5u,pos),parentField(6u,pos)),foam,fine);

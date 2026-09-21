@@ -52,11 +52,13 @@ function wire(){
 }
 function frame(timestamp) {
  if(stopped)return;requestAnimationFrame(frame);if(busy||document.hidden)return;
- const now=timestamp/1000,dt=last?Math.min(.1,now-last):1/60;last=now;
+ const now=timestamp/1000,cap=game?.touch?.enabled?(game.phase==='playing'&&!game.touch.portrait?30:15):0;
+ if(cap&&last&&now-last<1/cap-.001)return;
+ const dt=last?Math.min(.1,now-last):1/60;last=now;const workStart=performance.now();
  try{busy=true;const basis=game?game.update(dt):controls.update(dt);sim.frame(dt,game?(game.phase!=='playing'||game.touch?.portrait):paused,controls.camera,basis,renderer.width/renderer.height);renderer.frame(controls.camera,basis,now);game?.syncCollision();
- sim.device.queue.onSubmittedWorkDone().then(()=>{const finish=performance.now();if(previousCompletion){frames.push(finish-previousCompletion);if(frames.length>240)frames.shift();}previousCompletion=finish;busy=false;
- if(now-lastHud>.75){const recent=frames.slice(-60),mean=recent.reduce((a,b)=>a+b,0)/Math.max(1,recent.length);$('fps').textContent=`${mean>0?(1000/mean).toFixed(0):'—'} FPS`;$('resolution').textContent=`${renderer.width} × ${renderer.height}`;$('sim-clock').textContent=`${sim.time.toFixed(1)} s · ${sim.grid.nx}² cells`;
- if($('adaptive').checked&&quality!=='test'&&frames.length>45){const old=renderer.scale;if(mean>23)renderer.scale=Math.max(.50,old-.035);else if(mean<15.5)renderer.scale=Math.min(renderer.q.scale,old+.015);}
+ sim.device.queue.onSubmittedWorkDone().then(()=>{const finish=performance.now();if(previousCompletion){frames.push(cap?finish-workStart:finish-previousCompletion);if(frames.length>240)frames.shift();}previousCompletion=finish;busy=false;
+ if(now-lastHud>.75){const recent=frames.slice(-60),mean=recent.reduce((a,b)=>a+b,0)/Math.max(1,recent.length);$('fps').textContent=`${mean>0?(Math.min(cap||Infinity,1000/mean)).toFixed(0):'—'} FPS`;$('resolution').textContent=`${renderer.width} × ${renderer.height}`;$('sim-clock').textContent=`${sim.time.toFixed(1)} s · ${sim.grid.nx}² cells`;
+ if($('adaptive').checked&&quality!=='test'&&frames.length>45){const old=renderer.scale;if(mean>(cap?29:23))renderer.scale=Math.max(cap ? .45 : .50,old-.035);else if(mean<(cap?21:15.5))renderer.scale=Math.min(renderer.q.scale,old+.015);}
  lastHud=now;}
  }).catch(fail);
  }catch(error){busy=false;fail(error);}

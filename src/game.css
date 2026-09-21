@@ -67,3 +67,8 @@ body.touch-game{overscroll-behavior:none}
  #loading #load-log{height:70px;margin-top:10px}
  #loading .load-subtitle{margin:8px 0}
 }
+
+/* Both actions belong to the right thumb; movement stays under the left thumb. */
+#touch-sprint{left:auto;right:calc(130px + env(safe-area-inset-right));bottom:calc(154px + env(safe-area-inset-bottom))}
+#touch-jump{right:calc(56px + env(safe-area-inset-right))}
+@media(max-height:350px) and (orientation:landscape){#touch-sprint{bottom:122px}}

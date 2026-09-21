@@ -36,6 +36,9 @@ with a WebGPU-capable browser. Play **landscape**: the left analog stick moves,
 the right looks around. Partial stick travel walks slowly; hold **Sprint** to
 run. **Jump**, **Gather / Drink**, **Backpack**, and **Pause** have touch buttons.
 
+Sprint sits beside Jump above the right stick. Touch gameplay targets 30 FPS.
+The Low preset uses a smaller nearby water tile, fewer plants and cheaper clouds.
+
 New touch sessions default to Low quality and adaptive resolution. Controls
 respect screen cutouts and reset on interruption. Portrait mode pauses gameplay.
 Tap **⛶** or **Enter landscape** to request fullscreen and landscape orientation;
@@ -135,7 +138,8 @@ not a claim of photorealism or simulated erosion. See [credits](CREDITS.md) and
 [design limitations](docs/island-design.md).
 
 Water detail follows the camera throughout the island at 0.3 m spacing.
-The moving 153.6 × 120 m grid scrolls in whole cells, preserving overlapping
+Low uses a 76.8 × 76.8 m tile to reduce mobile GPU work.
+On Balanced/High/Ultra, the moving 153.6 × 120 m grid scrolls in whole cells, preserving overlapping
 water, foam, wetness and flow exactly. New cells inherit live island water and
 resolve local rock collisions; moving or changing views does not reset the clock.
 The island grid continues simulating outside the detail region. The two grids

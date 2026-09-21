@@ -14,6 +14,13 @@ with sync_playwright() as p:
  page.get_by_role('button',name='New journey',exact=True).tap()
  page.wait_for_timeout(300)
  assert page.locator('#touch-move').is_visible()
+ sprint_box=page.locator('#touch-sprint').bounding_box();jump_box=page.locator('#touch-jump').bounding_box()
+ assert abs(sprint_box['y']-jump_box['y'])<2 and sprint_box['x']>422
+ fps_start=page.evaluate('realIsland.renderer.frameCount');page.wait_for_timeout(1000)
+ frames=page.evaluate('realIsland.renderer.frameCount')-fps_start
+ assert 1<=frames<=33,frames
+ assert page.evaluate('realIsland.sim.coast.n')==257*257
+
  cdp=page.context.new_cdp_session(page)
  def pos(selector):
   r=page.locator(selector).bounding_box()

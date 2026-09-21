@@ -23,6 +23,10 @@ creates local ripples and a wake.
 | Pause | Escape | Pause |
 | Fullscreen / landscape | Browser fullscreen | ⛶ or Settings → Fullscreen · landscape |
 
+Sprint and Jump sit together above the right stick, leaving your left thumb free
+to keep moving. Touch gameplay targets 30 FPS (menus 15 FPS) to limit sustained
+GPU and battery load.
+
 Both sticks work simultaneously. Release them to stop moving/turning. A small
 dead zone prevents accidental movement, and partial stick travel gives slower
 movement. Menus and interrupted touches clear held controls.

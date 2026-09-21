@@ -13,12 +13,13 @@ export class CoastalPatch {
   }
   constructor(parent,shoreX){
     this.parent=parent;this.shoreX=shoreX;this.runtime=parent.runtime;this.kernels=parent.kernels;this.bindings=new Map();
-    this.grid={nx:513,nz:401,x0:shoreX-105,z0:100,dx:.3,dz:.3};this.n=this.grid.nx*this.grid.nz;
+    this.spraySlots=parent.quality.spraySlots||256;this.sprayCount=105*this.spraySlots;
+    this.grid={nx:parent.quality.patchNx||513,nz:parent.quality.patchNz||401,x0:shoreX-105,z0:100,dx:.3,dz:.3};this.n=this.grid.nx*this.grid.nz;
     for(const key of ['World','R','Controls','DetailW'])this[key]=parent[key];
     this.Coarse=parent.S;this.CoarseEta=parent.Eta;
-    for(const [name,size] of [['S',this.n*19*4],['Aux',this.n*4*4],['Eta',this.n*4],['Terrain',this.n*8*4],['Scroll',this.n*19*4],['ScrollAux',this.n*4*4],['Particles',105*256*12*4],['Spray',105*256*8*4],['RockState',105*8*4]])this[name]=this.runtime.createBuffer(size,{label:`0.3 m coastal ${name}`});
+    for(const [name,size] of [['S',this.n*19*4],['Aux',this.n*4*4],['Eta',this.n*4],['Terrain',this.n*8*4],['Scroll',this.n*19*4],['ScrollAux',this.n*4*4],['Particles',this.sprayCount*12*4],['Spray',this.sprayCount*8*4],['RockState',105*8*4]])this[name]=this.runtime.createBuffer(size,{label:`0.3 m coastal ${name}`});
   }
-  values(extra={}){const g=this.parent.grid;return {...this.parent.values(),...this.grid,count:this.n,rockCount:105,slots:256,step:this.parent.steps,cnx:g.nx,cnz:g.nz,cx0:g.x0,cz0:g.z0,cdx:g.dx,cdz:g.dz,...extra};}
+  values(extra={}){const g=this.parent.grid;return {...this.parent.values(),...this.grid,count:this.n,rockCount:105,slots:this.spraySlots,step:this.parent.steps,cnx:g.nx,cnz:g.nz,cx0:g.x0,cz0:g.z0,cdx:g.dx,cdz:g.dz,...extra};}
   dispatch(batch,name,extra={},count=this.n){return this.parent.dispatch.call(this,batch,name,extra,count);}
   follow(batch,camera,basis){
     const g=this.grid,p=this.parent.grid;
@@ -47,7 +48,7 @@ export class CoastalPatch {
   }
   publish(batch){
     this.dispatch(batch,'reconstruct');this.dispatch(batch,'surfaceDetail');
-    this.dispatch(batch,'coastalImpact',{},105);this.dispatch(batch,'sprayVertices',{count:105*256},105*256);
+    this.dispatch(batch,'coastalImpact',{},105);this.dispatch(batch,'sprayVertices',{count:this.sprayCount},this.sprayCount);
     this.dispatch(batch,'exchangeCoastalPatch',{},this.parent.n);
   }
   async diagnostics(){

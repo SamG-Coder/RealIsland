@@ -199,7 +199,7 @@ export class IslandRenderer {
     const encoder=d.createCommandEncoder({label:'RealIsland frame'});
     this.forest.aspect=this.width/this.height;this.forest.encode(encoder,camera,basis,s.tide,false);
     if(this.q.reflection)this.forest.encode(encoder,camera,basis,s.tide,true);
-    if((stage==='all'&&now-this.lastWeather>.12)||stage==='weather'){
+    if((stage==='all'&&now-this.lastWeather>(this.q.weatherInterval||.12))||stage==='weather'){
       for(const name of ['environment','light']){const pass=encoder.beginRenderPass({label:name,colorAttachments:[{view:this[name].view,loadOp:'clear',storeOp:'store',clearValue:{r:1,g:1,b:1,a:1}}]});pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[name]);pass.setBindGroup(1,this.blankImages);pass.draw(3);pass.end();}
       this.lastWeather=now;
     }
@@ -216,7 +216,7 @@ export class IslandRenderer {
     water.setBindGroup(0,this.groups.terrain);water.setBindGroup(1,this.waterImages);water.setPipeline(this.pipelines.water);water.setIndexBuffer(this.geometry.terrain.buffer,'uint32');water.drawIndexed(this.geometry.terrain.count);
     water.setBindGroup(0,this.groups.patch);water.setIndexBuffer(this.patchGeometry.buffer,'uint32');water.drawIndexed(this.patchGeometry.count);
     water.setBindGroup(0,this.groups.terrain);water.setPipeline(this.pipelines.farWater);water.draw(4*32*32*6);
-    water.setPipeline(this.pipelines.spray);water.setBindGroup(0,this.groups.spray);water.draw(6,SPRAY_COUNT);water.setBindGroup(0,this.groups.coastSpray);water.draw(6,105*256);water.end();
+    water.setPipeline(this.pipelines.spray);water.setBindGroup(0,this.groups.spray);water.draw(6,SPRAY_COUNT);water.setBindGroup(0,this.groups.coastSpray);water.draw(6,this.sim.coast.sprayCount);water.end();
     }
     if(stage==='water'){d.queue.submit([encoder.finish()]);return;}
     const post=encoder.beginRenderPass({label:'display',colorAttachments:[{view:this.context.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});post.setPipeline(this.pipelines.post);post.setBindGroup(0,this.postGroup);post.draw(3);post.end();
