@@ -1,0 +1,49 @@
+name: Apply source checkpoint
+on:
+  push:
+    branches: [main]
+    paths: ['.checkpoints/*.patch']
+  workflow_dispatch:
+    inputs:
+      patch:
+        description: 'Committed .checkpoints/name.patch to apply'
+        required: true
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: source-checkpoint
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Apply and save the exact reviewed source patch
+        env:
+          REQUESTED_PATCH: ${{ inputs.patch }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REQUESTED_PATCH" ]; then
+            patch="$REQUESTED_PATCH"
+          else
+            patch="$(git diff-tree --no-commit-id --name-only --diff-filter=A -r HEAD -- '.checkpoints/*.patch')"
+          fi
+          if [[ ! "$patch" =~ ^\.checkpoints/[A-Za-z0-9_-]+\.patch$ ]]; then
+            echo 'Exactly one committed checkpoint patch is required.' >&2
+            exit 1
+          fi
+          git apply --check "$patch"
+          git apply "$patch"
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Apply source checkpoint: $(basename "$patch" .patch)"
+          git push origin HEAD:main
+      - name: Validate the resulting source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/dispatches" -f ref=main
