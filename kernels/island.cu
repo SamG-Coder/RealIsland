@@ -256,3 +256,36 @@ __global__ void applyIslandRocks(const float *World,const float *R,float *S,int 
  S[q]=bed;S[2*n+q]=fmaxf(0.0f,level-bed);
  if(S[2*n+q]<.002f){S[3*n+q]=0.0f;S[4*n+q]=0.0f;S[7*n+q]=0.0f;S[8*n+q]=0.0f;}
 }
+
+// Each radial limb carries connected wood and two feathered branchlet planes.
+// The crown follows the supplied conifer reference: layered, tapered and drooping.
+__global__ void forestVertices(const float *World,const float *Trees,float *Foliage,int count,int start){
+ int k=start+blockIdx.x*blockDim.x+threadIdx.x;if(k>=count)return;
+ int card=k/4,corner=k%4,t=card/192,b=card%192;
+ float tx=Trees[t*4],ty=Trees[t*4+1],tz=Trees[t*4+2],h=Trees[t*4+3];
+ float up=corner==1||corner==2?1.0f:0.0f,side=corner>=2?1.0f:-1.0f;
+ float seed=randomRiver(World,t+11041),x=tx,y=ty,z=tz,nx=0.0f,ny=1.0f,nz=0.0f,material=seed,f=0.0f;
+ if(b>=184){
+  float angle=((float)(b-184)+(corner>=2?1.0f:0.0f))*.78539816f;
+  float rad=h*(up>.5f?.0008f:.019f);
+  x+=cosf(angle)*rad;z+=sinf(angle)*rad;y+=up*h*1.025f-.25f;
+  nx=cosf(angle);ny=.025f;nz=sinf(angle);material=-1.0f;
+ }else{
+  int branch=b/2,plane=b%2;
+  float rnd=randomRiver(World,t*53+branch+417);
+  f=.075f+(float)branch*.0099f+(rnd-.5f)*.018f;
+  float a=(float)branch*2.399963f+seed*6.283185f+(rnd-.5f)*.4f;
+  float reach=h*(.29f+.035f*seed)*powf(1.0f-f,.86f)*(.82f+.30f*rnd);
+  float drop=reach*.06f*f;
+  float width=reach*.46f;
+  float roll=plane==0?.25f:-1.0f;
+  float across=side*width,vertical=across*sinf(roll);
+  material=seed*.4f+rnd*.6f;
+  x+=cosf(a)*up*reach-sinf(a)*across*cosf(roll);
+  z+=sinf(a)*up*reach+cosf(a)*across*cosf(roll);
+  y+=h*f+up*drop+vertical;
+  nx=sinf(a)*sinf(roll);ny=cosf(roll);nz=-cosf(a)*sinf(roll);
+ }
+ Foliage[k*8]=x;Foliage[k*8+1]=y;Foliage[k*8+2]=z;Foliage[k*8+3]=material;
+ Foliage[k*8+4]=nx;Foliage[k*8+5]=ny;Foliage[k*8+6]=nz;Foliage[k*8+7]=f;
+}

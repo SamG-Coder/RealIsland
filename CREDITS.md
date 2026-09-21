@@ -21,3 +21,11 @@ The unmodified compiler and runtime are included from RealGrass's pinned submodu
 ## RealIsland integration
 
 New shared terrain, spring/ocean boundary conditions, GPU terrain publication, common rendering adapter, camera, controls, build scripts and integration tests are in the top-level `src`, `kernels`, `scripts` and `tests` folders. Source adapters fail if expected upstream patterns change. Precompiled deployment artifacts omit compiler ASTs, but the editable CUDA originals and linked CUDA output are included.
+
+## Pine bark and twig textures
+
+[Pine Tree 01](https://polyhaven.com/a/pine_tree_01), by Rico Cilliers (modeling)
+and Rob Tuytel (photography), published by Poly Haven under CC0. The project uses
+its 2K twig diffuse/alpha and bark diffuse textures on custom curved branch geometry;
+it does not include the original 17-million-triangle tree model. Source URLs and
+original MD5 hashes are recorded in `src/assets/pine-tree-source.json`.

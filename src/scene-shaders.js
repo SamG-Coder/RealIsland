@@ -19,6 +19,9 @@ struct Island { domain:vec4f, grid:vec4u, weather:vec4f, view:vec4f, coastBounds
 @group(1) @binding(5) var clampSampler:sampler;
 @group(1) @binding(6) var coastTexture:texture_2d<f32>;
 @group(1) @binding(7) var coastSampler:sampler;
+@group(1) @binding(8) var treeAlbedo:texture_2d<f32>;
+@group(1) @binding(9) var treeAlpha:texture_2d<f32>;
+@group(1) @binding(10) var treeBark:texture_2d<f32>;
 fn coastNoise(p:vec2f)->vec4f{return textureSample(coastTexture,coastSampler,p);}
 fn gridPoint(p:vec2f)->vec2f{return clamp((p-isle.domain.xy)/isle.domain.zw,vec2f(0.),vec2f(isle.grid.xy)-1.001);}
 fn inIslandGrid(p:vec2f)->bool {let q=(p-isle.domain.xy)/isle.domain.zw;return all(q>=vec2f(0.))&&all(q<=vec2f(isle.grid.xy)-1.);}
@@ -123,6 +126,7 @@ export const skyShader=common+fullscreen+/* wgsl */`
 }
 `;
 const surfaceVertex=/* wgsl */`
+@group(0) @binding(3) var<storage,read> forestShade:array<f32>;
 struct Surface { @builtin(position) p:vec4f,@location(0) world:vec3f,@location(1) normal:vec3f,@location(2) data:vec4f,@location(3) uv:vec2f }
 @vertex fn surfaceVs(@builtin(vertex_index) i:u32)->Surface {
  let a=geometry[i*2u];let b=geometry[i*2u+1u];var o:Surface;
@@ -137,9 +141,15 @@ fn mineral(p:vec3f,n:vec3f)->vec3f {
  let vein=(1.-smoothstep(.014,.035,abs(sin(dot(p,vec3f(.93,.70,-.52))+mid*.56))))*.065;
  return mix(vec3f(.19,.215,.205),vec3f(.49,.44,.35),largeScale)*mix(.68,1.25,mid)*mix(.87,1.1,grain)*(1.-cracks*.14)+vec3f(.65,.60,.47)*vein;
 }
+fn canopyShade(p:vec3f)->f32 {
+ let nx=u32(isle.worldDomain.z/isle.view.w)+1u;
+ let q=clamp((p.xz-isle.worldDomain.xy)/isle.view.w,vec2f(0.),vec2f(f32(nx)-1.001));let f=fract(q);let ij=vec2u(q);let k=ij.y*nx+ij.x;
+ let shadow=mix(mix(forestShade[k],forestShade[k+1u],f.x),mix(forestShade[k+nx],forestShade[k+nx+1u],f.x),f.y);
+ return mix(shadow,1.,smoothstep(1.,10.,p.y-fieldGround(p.xz)));
+}
 fn diffuseSurface(color:vec3f,n:vec3f,p:vec3f,wet:f32)->vec3f {
- let sunlight=lightAt(p);let ndl=max(dot(n,SUN),0.);
- let ambient=vec3f(.32,.40,.49)*(.66+.34*max(n.y,0.));
+ let shade=canopyShade(p);let sunlight=lightAt(p)*shade;let ndl=max(dot(n,SUN),0.);
+ let ambient=vec3f(.32,.40,.49)*(.66+.34*max(n.y,0.))*mix(.72,1.,shade);
  let direct=vec3f(1.12,1.04,.84)*ndl*sunlight;
  let halfVector=normalize(SUN+normalize(cam.eye.xyz-p));
  let spec=pow(max(dot(n,halfVector),0.),mix(18.,90.,wet))*.22*wet*sunlight;
@@ -212,53 +222,39 @@ export const rockShader=common+surfaceVertex+/* wgsl */`
 `;
 // Small real geometry, rooted in the same riverbed as the water. Deterministic
 // world cells keep stones fixed as the camera moves; no animated CPU uploads.
-export const pebbleShader=common+surfaceVertex+/* wgsl */`
-@vertex fn pebbleVs(@builtin(vertex_index) vertex:u32,@builtin(instance_index) instance:u32)->Surface {
- let cell=floor(cam.eye.xz/.65)+vec2f(f32(instance%128u)-64.,f32(instance/128u)-64.);
- let rnd=fract(sin(dot(cell,vec2f(127.1,311.7)))*43758.5453);
- let rnd2=fract(sin(dot(cell,vec2f(269.5,183.3)))*23758.5453);
- let p=(cell+vec2f(rnd,rnd2))*.65;let ground=fieldGround(p);
- let wet=nearbyWater(p);let depth=fieldAt(2u,p);
- let deposit=sediment(p);
- let allowed=deposit>.01 && rnd2<deposit && wet>.015 && depth<.5 && fieldAt(0u,p)-ground<.06;
- var o:Surface;o.world=vec3f(p.x,ground,p.y);o.p=project(o.world);o.normal=vec3f(0,1,0);o.data=vec4f(rnd,depth,0,0);o.uv=vec2f(0.);
- if(!allowed){return o;}
- let radius=.035+.115*rnd*rnd;
- let quad=vertex/6u;let corner=vertex%6u;
- let offsets=array<vec2f,6>(vec2f(0,0),vec2f(1,0),vec2f(0,1),vec2f(0,1),vec2f(1,0),vec2f(1,1));
- let uv=(vec2f(f32(quad%16u),f32(quad/16u))+offsets[corner])/vec2f(16.,5.);
- let angle=uv.x*6.2831853+rnd*6.2831853;let polar=uv.y*1.5707963;
- let local=vec3f(cos(angle)*sin(polar),cos(polar),sin(angle)*sin(polar));
- let shape=vec3f(radius,radius*(.55+.2*rnd2),radius*(.7+rnd2*.5));
- let uneven=1.+.07*sin(angle*3.+rnd*11.)*sin(polar)*sin(polar);
- let world=vec3f(p.x,ground-.018,p.y)+local*shape*uneven;
- o.world=world;o.p=project(world);o.normal=normalize(local/shape);return o;
-}
-@fragment fn pebbleFs(v:Surface)->@location(0) vec4f {
- let c=mix(mineral(v.world,normalize(v.normal)),vec3f(.42,.37,.29),.35)*mix(.92,1.06,v.data.x);
- return vec4f(diffuseSurface(c,normalize(v.normal),v.world,clamp(v.data.y*6.,0.,1.)),1.);
-}
-`;
 export const foliageShader=common+surfaceVertex+/* wgsl */`
 @vertex fn foliageVs(@builtin(vertex_index) i:u32)->Surface {
- let a=geometry[i*2u];let b=geometry[i*2u+1u];let corner=i%4u;
- let uv=array<vec2f,4>(vec2f(0,-1),vec2f(1,-1),vec2f(1,1),vec2f(0,1));
- let wind=sin(a.x*.12+a.z*.09-cam.eye.w*1.3)*.18*cam.atmosphere.y;
- let world=a.xyz+vec3f(wind,0.,wind*.37)*uv[corner].x*b.w;
- var o:Surface;o.world=world;o.normal=normalize(b.xyz);o.p=project(world);o.uv=uv[corner];o.data=vec4f(a.w,b.w,0.,0.);return o;
+ // Twelve segments preserve the rise and weight-induced sag of each limb.
+ let card=i/26u;let local=i%26u;let u=f32(local/2u)/12.;let side=f32(local%2u)*2.-1.;
+ let p0=geometry[card*8u];let p1=geometry[card*8u+2u];
+ let p2=geometry[card*8u+4u];let p3=geometry[card*8u+6u];
+ let b=geometry[card*8u+1u];let a=mix(mix(p0,p1,u),mix(p3,p2,u),(side+1.)*.5);
+ let reach=length((p1.xyz+p2.xyz-p0.xyz-p3.xyz)*.5);
+ let limb=select(1.,0.,a.w<0.);let load=1.-b.w*.7;
+ let arc=reach*(.32*u-.58*u*u)*load;
+ let pendant=reach*.10*abs(side)*sin(u*3.14159265)*load;
+ let wind=sin(a.x*.12+a.z*.09-cam.eye.w*1.3)*.10*cam.atmosphere.y;
+ let world=a.xyz+vec3f(wind*u*u,arc-pendant,wind*.37*u*u)*limb;
+ var o:Surface;o.world=world;o.normal=normalize(b.xyz);o.p=project(world);o.uv=vec2f(u,side);o.data=vec4f(a.w,b.w,0.,0.);return o;
 }
+
 @fragment fn foliageFs(v:Surface)->@location(0) vec4f {
+ let u=v.uv.x;let seed=v.data.x;
+ // Photographed twig atlas sampled along paired secondary branches.
+ let lateral=abs(v.uv.y);let side=sign(v.uv.y);
+ let envelope=pow(max(0.,1.-u),.72)*smoothstep(0.,.10,u)*(.88+.09*sin(u*23.+seed*11.));
+ let station=(u-lateral*.20)*11.+side*.24+seed;
+ let twigUV=vec2f(fract(station)*.237,(1.-clamp(lateral/max(envelope,.001),0.,1.))*.445);
+ let alpha=textureSample(treeAlpha,clampSampler,twigUV).r;
+ let texel=textureSample(treeAlbedo,clampSampler,twigUV).rgb;
+ let bark=textureSample(treeBark,coastSampler,vec2f((v.world.x+v.world.z)*.9,v.world.y*.3)).rgb*.75;
  if(v.data.x<0.){
-   let grain=noise(vec2f(v.world.x*16.+v.world.z*13.,v.world.y*.8));
-   let bark=mix(vec3f(.13,.105,.075),vec3f(.29,.24,.17),grain);
    return vec4f(diffuseSurface(bark,normalize(v.normal),v.world,0.),1.);
  }
- let u=v.uv.x;let across=abs(v.uv.y);let seed=v.data.x;
- let twigs=abs(fract(u*(9.+seed*7.)+across*1.35)-.5);
- let silhouette=pow(max(0.,1.-u),.32)*(0.76+.20*sin(u*44.+seed*19.)*sin(u*23.));
- if(across>silhouette || (twigs>.43 && across>.30) || (cam.growth.w>.5&&v.world.y<isle.weather.x)){discard;}
- let light=lightAt(v.world);let color=mix(vec3f(.045,.094,.037),vec3f(.16,.25,.074),seed)*(.8+u*.25);
- return vec4f(aerial(pow(color,vec3f(2.2))*(.65+light*.65),v.world),1.);
+ if(lateral>envelope || (alpha<.24 && lateral>.012*(1.-u)) || (cam.growth.w>.5&&v.world.y<isle.weather.x)){discard;}
+ let color=texel*vec3f(.82,1.12,.80)*mix(.82,1.15,seed);
+ let n=normalize(v.normal+vec3f(v.uv.y*.15,.35,u*.15));
+ return vec4f(diffuseSurface(color,n,v.world,0.)*(.72+.28*smoothstep(.25,.85,v.data.y)),1.);
 }
 `;
 function adaptMeadow(source) {

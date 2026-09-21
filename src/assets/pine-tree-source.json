@@ -1,0 +1,25 @@
+{
+  "asset": "https://polyhaven.com/a/pine_tree_01",
+  "license": "CC0",
+  "authors": [
+    "Rico Cilliers",
+    "Rob Tuytel"
+  ],
+  "files": {
+    "twig_diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/pine_tree_01/pine_tree_01_twig_diff_2k.jpg",
+      "md5": "45d577b1b780711976147d66234a1f4c",
+      "size": 1623201
+    },
+    "twig_alpha": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/pine_tree_01/pine_tree_01_twig_alpha_2k.png",
+      "md5": "85f9f62d98dc35cce642895d75f79fa6",
+      "size": 814656
+    },
+    "bark_diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/pine_tree_01/pine_tree_01_bark_diff_2k.jpg",
+      "md5": "f420cb9ca2e845cd988f3bcf03c41a85",
+      "size": 2700448
+    }
+  }
+}

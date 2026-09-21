@@ -35,9 +35,9 @@ export class IslandSimulation {
     const buffer=(name,size,usage)=>this[name]=runtime.createBuffer(size,{label:`RealIsland ${name}`,...(usage?{usage}: {})});
     buffer('World',new Float32Array([seed,0]));buffer('S',this.n*19*4);buffer('Aux',this.n*4*4);buffer('Eta',this.n*4);
     buffer('R',ROCK_COUNT*8*4);buffer('RockMesh',ROCK_COUNT*65*25*8*4);buffer('RockWet',ROCK_COUNT*4*4);
-    buffer('Terrain',this.n*8*4);buffer('Trees',this.treeCount*4*4);buffer('Foliage',this.treeCount*96*4*8*4);
+    buffer('Terrain',this.n*8*4);buffer('Trees',this.treeCount*4*4);buffer('Foliage',this.treeCount*192*4*8*4);
     buffer('Particles',SPRAY_COUNT*12*4);buffer('Spray',SPRAY_COUNT*8*4);
-    buffer('Controls',new Float32Array([1,0,0]));
+    buffer('Controls',new Float32Array([1,0,0]));buffer('ForestShade',this.n*4);
     const waves=[];for(let i=0;i<8;i++){const a=[-.24,.42,-.67,.16,-.93,.72,-.38,.95][i],k=2*Math.PI/(8.5*.79**i);waves.push(k*Math.cos(a),k*Math.sin(a),Math.sqrt(9.81*k),.043*.77**i);}
     buffer('DetailW',new Float32Array(waves));
     for(const key of ['roots','shape','state','biology'])buffer(key,this.count*16);
@@ -59,12 +59,24 @@ export class IslandSimulation {
     add('initializeIsland',this.n,{},true);add('initializeRocks',ROCK_COUNT,{count:ROCK_COUNT});for(let rockIndex=0;rockIndex<ROCK_COUNT;rockIndex++)add('applyIslandRocks',4096,{rockIndex});
     add('islandTerrain',this.n,{},true);add('rockWetness',ROCK_COUNT,{reset:1});
     add('rockVertices',ROCK_COUNT*65*25,{count:ROCK_COUNT*65*25},true);
-    add('treeInstances',this.treeCount,{count:this.treeCount});add('foliageVertices',this.treeCount*96*4,{count:this.treeCount*96*4},true);
+    add('treeInstances',this.treeCount,{count:this.treeCount});add('foliageVertices',this.treeCount*192*4,{count:this.treeCount*192*4},true);
     // Generation is bounded by GPU completion. Long terrain work cannot flood the queue.
     for(let i=0;i<jobs.length;i+=8){const batch=this.runtime.batch();for(const job of jobs.slice(i,i+8))this.dispatch(batch,job.entry,job.extra,job.count);batch.submit();await this.runtime.idle();progress('Growing the island on the GPU',.33+.20*(i+8)/jobs.length);}
     // One explicit startup readback measures the generated catchment. No evolving
     // field is read back during ordinary animation.
     this.hydrology=headwaterBudget(await this.runtime.read(this.S),this.grid);
+    const forest=await this.runtime.read(this.Trees),shade=new Float32Array(this.n).fill(1),g=this.grid;
+    for(let t=0;t<this.treeCount;t++){
+      const x=forest[t*4],z=forest[t*4+2],h=forest[t*4+3];if(h<1)continue;
+      const cx=x+.48/.71*h*.4,cz=z+.51/.71*h*.4,r=h*.28+2;
+      for(let j=Math.max(0,Math.floor((cz-r-g.z0)/g.dz));j<=Math.min(g.nz-1,Math.ceil((cz+r-g.z0)/g.dz));j++)
+       for(let i=Math.max(0,Math.floor((cx-r-g.x0)/g.dx));i<=Math.min(g.nx-1,Math.ceil((cx+r-g.x0)/g.dx));i++){
+        const d=((g.x0+i*g.dx-cx)/r)**2+((g.z0+j*g.dz-cz)/r)**2;if(d>1)continue;
+        const k=j*g.nx+i;shade[k]=Math.max(.30,shade[k]*(1-.5*Math.exp(-d*3)));
+       }
+    }
+    this.runtime.write(this.ForestShade,shade);
+
     this.syncControls();
     for(let block=0;block<8;block++){const batch=this.runtime.batch();for(let s=0;s<4;s++)this.step(batch);batch.submit();await this.runtime.idle();progress('Settling spring and ocean boundaries',.53+.07*(block+1)/8);}
     const batch=this.runtime.batch();this.publish(batch);batch.submit();await this.runtime.idle();

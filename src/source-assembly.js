@@ -125,21 +125,7 @@ export function assembleSources({coast, coastRender, river, impacts, grass, plan
     `valid * (4.5f + powf(randomRiver(World, k * 4 + 1004), .8f) * 15.0f)
       * (.48f+.52f*smooth(25.0f,200.0f,-shoreDistance(World,x,z)))
       * (1.0f-.25f*smooth(65.0f,125.0f,Trees[k*4+1]));`);
-  let foliage=take('foliageVertices');
-  foliage=replaceOnce(foliage,'  Foliage[k * 8] = x;',`  // Eight opaque tapered trunk faces replace the last crown whorl.
-  // Root flare is buried slightly, so steep ground cannot expose a floating base.
-  if(b>=88){
-    float angle=((float)(b-88)+(corner>=2?1.0f:0.0f))*.78539816f;
-    float up=corner==1||corner==2?1.0f:0.0f;
-    float rad=h*(up>.5f?.004f:.026f);
-    Foliage[k*8]=Trees[t*4]+cosf(angle)*rad;
-    Foliage[k*8+1]=Trees[t*4+1]-.22f+up*h*.92f;
-    Foliage[k*8+2]=Trees[t*4+2]+sinf(angle)*rad;
-    Foliage[k*8+3]=-1.0f;
-    Foliage[k*8+4]=cosf(angle);Foliage[k*8+5]=.02f;Foliage[k*8+6]=sinf(angle);Foliage[k*8+7]=0.0f;
-    return;
-  }
-  Foliage[k * 8] = x;`);
+  let foliage=cudaFunction(island,'forestVertices').replace('void forestVertices','void foliageVertices');
   let detail=cudaFunction(coastRender,'surfaceDetail');
   // Controls[1] now carries normalized runoff, not the demo's wave heading.
   detail=replaceOnce(detail,'angle=Controls[1]*.0174532925f','angle=0.0f');

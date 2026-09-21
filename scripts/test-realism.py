@@ -35,7 +35,7 @@ with sync_playwright() as p:
       rt.destroyBuffer(Eta);rt.destroyBuffer(S);rt.destroyBuffer(Aux);rt.destroyBuffer(Controls);
       const trees=await rt.read(s.Trees),foliage=await rt.read(s.Foliage);let active=0,trunks=0,best=0,score=Infinity;
       for(let i=0;i<s.treeCount;i++)if(trees[i*4+3]>0){
-        active++;if(foliage[(i*96+88)*4*8+3]===-1)trunks++;
+        active++;if(foliage[(i*192+184)*4*8+3]===-1)trunks++;
         const v=Math.abs(trees[i*4]+120)+Math.abs(trees[i*4+2]+100);
         if(v<score){best=i;score=v;}
       }
