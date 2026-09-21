@@ -69,7 +69,32 @@ export function assembleSources({coast, coastRender, river, impacts, grass, plan
  float bedZ=j>0&&j<nz-1?(bed[k+nx]-bed[k-nx])/(2.0f*dz):0.0f;
  float towardShore=(ux*bedX+vz*bedZ)/fmaxf(.001f,sqrtf(bedX*bedX+bedZ*bedZ));
  float advancingEdge=front*smooth(.15f,.95f,towardShore)*(obstacle?.08f:1.0f);`);
-  const source = [hydro,linked,valley,shore,islandHelpers,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed','rockVertices'].map(take),clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
+  // The equations remain upstream's, but static terrain is sampled from its
+  // GPU cache. This avoids nested shader inlining and redundant rock/tree work.
+  const cacheArgs='const float *S, int nx, int nz, float x0, float z0, float dx, float dz';
+  const cacheCall='S,nx,nz,x0,z0,dx,dz';
+  const terrainCache=`__device__ float cachedField(const float *S,int nx,int nz,float x0,float z0,float dx,float dz,float x,float z,int layer){
+    float gx=cap((x-x0)/dx,0.0f,(float)nx-1.001f),gz=cap((z-z0)/dz,0.0f,(float)nz-1.001f);
+    int i=(int)gx,j=(int)gz;float fx=gx-(float)i,fz=gz-(float)j;
+    return adv(S+layer*nx*nz,j*nx+i,nx,1.0f-fx,fx,1.0f-fz,fz);
+  }`;
+  let cachedRock=take('riverRock').replace('float riverRock(', 'float cachedRock(');
+  cachedRock=replaceOnce(cachedRock,'float z) {','float z, float ground) {');
+  cachedRock=cachedRock.replaceAll('riverGround(World, x, z)','ground');
+  cachedRock=replaceOnce(cachedRock,'float ground = ground,\n        rock =','float rock =');
+  rocks=replaceOnce(rocks,'int count) {',`${cacheArgs}, int count) {`);
+  rocks=rocks.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
+  let rockGeometry=take('rockVertices');
+  rockGeometry=replaceOnce(rockGeometry,'int count, int start)',`${cacheArgs}, int count, int start)`);
+  rockGeometry=rockGeometry.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
+  rockGeometry=rockGeometry.replace(/riverRock\(World, R, r, ([^,]+), ([^)]+)\)/g,(_,x,z)=>`cachedRock(World,R,r,${x},${z},cachedField(${cacheCall},${x},${z},1))`);
+  clearance=replaceOnce(clearance,'float z) {',`float z, ${cacheArgs}) {`);
+  clearance=clearance.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
+  clearance=clearance.replaceAll('riverBed(World, R, x, z)',`cachedField(${cacheCall},x,z,0)`);
+  trees=replaceOnce(trees,'int count)',`${cacheArgs}, int count)`);
+  trees=trees.replaceAll('plantClearance(World, R, x, z)',`plantClearance(World,R,x,z,${cacheCall})`);
+  trees=trees.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
+  const source = [hydro,linked,valley,shore,islandHelpers,terrainCache,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed'].map(take),cachedRock,rockGeometry,clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
   let meadow=grass.replace('// PLANT_MODEL',plant);
   meadow=replaceOnce(meadow,'unsigned int reset, float season, float water)', 'unsigned int reset, float season, float water, const float *S, int nx, int nz, float x0, float z0, float dx, float dz)');
   meadow=replaceOnce(meadow,'        roots[i] = plant.root;', `        float px=plant.root.x, pz=plant.root.z;
@@ -86,6 +111,10 @@ export function assembleSources({coast, coastRender, river, impacts, grass, plan
         roots[i] = plant.root;`);
   meadow=replaceOnce(meadow,'float y=s.x*height*0.5f-eyeY;', 'float y=r.y+s.x*height*0.5f-eyeY;');
   meadow=replaceOnce(meadow,'sqrtf(x*x+z*z+eyeY*eyeY)', 'sqrtf(x*x+z*z+(r.y-eyeY)*(r.y-eyeY))');
+  meadow=replaceOnce(meadow,'unsigned int inspect) {','unsigned int inspect, const float *S, int nx, int nz, float x0, float z0, float dx, float dz) {');
+  meadow=replaceOnce(meadow,'if (distance>46.0f || depth < -3.5f) return;',`if (distance>46.0f || depth < -3.5f) return;
+        int gi=(int)cap((r.x-x0)/dx,0.0f,(float)nx-1.0f),gj=(int)cap((r.z-z0)/dz,0.0f,(float)nz-1.0f),gk=gj*nx+gi,gn=nx*nz;
+        if(S[2*gn+gk]>.025f && r.y<S[gk]+S[2*gn+gk]-.02f)return;`);
   const grassSource=[cudaFunction(hydro,'cap'),cudaFunction(hydro,'adv'),meadow].join('\n');
   return {source,grassSource};
 }

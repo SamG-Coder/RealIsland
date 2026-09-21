@@ -10,6 +10,11 @@ export function makeGridIndices(cols,rows,copies=1) {
   }
   return out;
 }
+export function makeQuadIndices(count) {
+  const out=new Uint32Array(count*6);
+  for(let i=0;i<count;i++)out.set([i*4,i*4+1,i*4+2,i*4,i*4+2,i*4+3],i*6);
+  return out;
+}
 export class IslandRenderer {
   static async create(canvas,simulation,progress=()=>{}) {
     const renderer=new IslandRenderer(canvas,simulation);
@@ -49,7 +54,7 @@ export class IslandRenderer {
       {binding:3,visibility:F,texture:{}},{binding:4,visibility:F,texture:{sampleType:'depth'}},{binding:5,visibility:V|F,sampler:{type:'filtering'}}]});
     this.layout=d.createPipelineLayout({bindGroupLayouts:[this.worldLayout,this.imageLayout]});
     progress('Generating original meadow materials',.61);this.materials=await createSeededMaterials(d,this.sim.seed);await d.queue.onSubmittedWorkDone();
-    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT)),foliage:this.uploadIndices('branch topology',makeGridIndices(2,2,TREE_COUNT*96))};
+    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT)),foliage:this.uploadIndices('branch topology',makeQuadIndices(TREE_COUNT*96))};
     const alpha={color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}};
     const recipes=[
       ['environment',shaders.environmentShader(this.q.cloudSteps),'screenVs','environmentFs',false],

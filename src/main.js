@@ -42,7 +42,7 @@ function frame(timestamp) {
 }
 async function start(){try{
  sim=await IslandSimulation.create(qualityFor(quality),seed,progress,fail);renderer=await IslandRenderer.create($('view'),sim,progress);
- Object.assign(api,{sim,renderer,camera:controls.camera,cameraBasis,goto,diagnostics,togglePause,get paused(){return paused;}});wire();
+ Object.assign(api,{sim,renderer,camera:controls.camera,cameraBasis,goto,diagnostics,togglePause});Object.defineProperty(api,'paused',{get:()=>paused});wire();
  $('loading').hidden=true;api.ready=true;requestAnimationFrame(frame);
 }catch(error){fail(error);}}
 addEventListener('error',event=>fail(event.error||event.message));addEventListener('unhandledrejection',event=>fail(event.reason));start();

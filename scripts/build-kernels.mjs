@@ -9,7 +9,7 @@ const {source,grassSource}=assembleSources(inputs);
 await mkdir(new URL('generated/',root),{recursive:true});
 await writeFile(new URL('generated/island-linked.cu',root),source);
 await writeFile(new URL('generated/meadow-linked.cu',root),grassSource);
-const hydro=['initializeRocks','initializeIsland','islandTerrain','advectMomentum','faces','limits','limitFlux','integrate','islandBoundary','transport','commitTransport','riverFoam','reconstruct','reconstructRiver','surfaceDetail','rockVertices','treeInstances','foliageVertices','rockWetness','waterfallSpray','initializeClosedTest'];
+const hydro=['initializeRocks','initializeIsland','applyIslandRocks','islandTerrain','advectMomentum','faces','limits','limitFlux','integrate','islandBoundary','transport','commitTransport','riverFoam','reconstruct','reconstructRiver','surfaceDetail','rockVertices','treeInstances','foliageVertices','rockWetness','waterfallSpray','initializeClosedTest'];
 const meadow=['grow','simulate','selectGrass','clearDraws'];
 const report={kind:'CUDA-to-WGSL compilation (not GPU execution)',sources:Object.fromEntries(Object.entries(inputs).map(([k,v])=>[paths[k],createHash('sha256').update(v).digest('hex')])),kernels:[]};
 const artifacts={};

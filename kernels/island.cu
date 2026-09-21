@@ -42,16 +42,27 @@ __device__ float riverGround(const float *World,float x,float z) {
 __global__ void initializeIsland(const float *World,const float *R,float *S,int nx,int nz,float x0,float z0,float dx,float dz,int start) {
   int k=start+blockIdx.x*blockDim.x+threadIdx.x,n=nx*nz;if(k>=n)return;
   float x=x0+(float)(k%nx)*dx,z=z0+(float)(k/nx)*dz;
-  float ground=riverGround(World,x,z),bed=riverBed(World,R,x,z);
+  float ground=riverGround(World,x,z),bed=ground;
   S[k]=bed;S[n+k]=ground;
   float level=0.0f, current=0.0f;
   if(z>-156.0f&&z<185.0f&&channelDistance(World,x,z)<4.0f) {
     level=fmaxf(0.0f,riverDatum(World,x,z)); current=3.2f;
   }
+  float oceanU=0.0f,oceanV=0.0f;
+  if(level<.001f && ground<0.0f){
+    float wave=0.0f,fade=smooth(.02f,1.4f,-ground);
+    for(int b=0;b<4;b++){
+      float kappa=6.2831853f/(32.0f+(float)b*11.0f),angle=-.55f+(float)b*.34f;
+      float band=cosf(kappa*(cosf(angle)*x+sinf(angle)*z)+(float)b*2.399963f)*(.20f/(1.0f+(float)b*.6f))*fade;
+      wave+=band;float velocity=band*sqrtf(9.81f/fmaxf(.45f,-ground));
+      oceanU+=cosf(angle)*velocity;oceanV+=sinf(angle)*velocity;
+    }
+    level+=wave;
+  }
   float h=fmaxf(0.0f,level-bed), tangent=(riverCenter(World,z+.25f)-riverCenter(World,z-.25f))/.5f;
   S[2*n+k]=h;
-  S[4*n+k]=h>.02f?current/sqrtf(1.0f+tangent*tangent):0.0f;
-  S[3*n+k]=S[4*n+k]*tangent;
+  S[4*n+k]=h>.02f?current/sqrtf(1.0f+tangent*tangent)+oceanV:0.0f;
+  S[3*n+k]=(S[4*n+k]-oceanV)*tangent+oceanU;
   S[7*n+k]=h>.002f?1.0f:0.0f;S[8*n+k]=fminf(1.0f,h*5.0f);
   S[9*n+k]=x;S[10*n+k]=z;
 }
@@ -104,4 +115,19 @@ __global__ void initializeClosedTest(float *S,int nx,int nz,float dx,float dz,in
   S[k]=bed;S[n+k]=bed;S[2*n+k]=-bed;
   if(mode==0){float a=(x-(float)nx*dx*.5f)/3.0f,b=(z-(float)nz*dz*.5f)/3.0f;S[2*n+k]+=.12f*expf(-a*a-b*b);}
   S[9*n+k]=x;S[10*n+k]=z;
+}
+
+// A separate pass samples the cached ground once per cell. This keeps the
+// original rock silhouette/obstacle equation without inlining the whole island
+// generator into every iteration of a 105-rock loop.
+__global__ void applyIslandRocks(const float *World,const float *R,float *S,int nx,int nz,float x0,float z0,float dx,float dz,int start){
+ int k=start+blockIdx.x*blockDim.x+threadIdx.x,n=nx*nz;if(k>=n)return;
+ float x=x0+(float)(k%nx)*dx,z=z0+(float)(k/nx)*dz;
+ float ground=S[n+k],bed=ground,level=S[k]+S[2*n+k];
+ for(int r=0;r<105;r++){
+  int a=r*8;float radius=fmaxf(R[a+2],R[a+3])*1.4f;
+  if(fabsf(x-R[a])<radius&&fabsf(z-R[a+1])<radius)bed=fmaxf(bed,cachedRock(World,R,r,x,z,ground));
+ }
+ S[k]=bed;S[2*n+k]=fmaxf(0.0f,level-bed);
+ if(S[2*n+k]<.002f){S[3*n+k]=0.0f;S[4*n+k]=0.0f;S[7*n+k]=0.0f;S[8*n+k]=0.0f;}
 }

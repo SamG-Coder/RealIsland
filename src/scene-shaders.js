@@ -97,12 +97,12 @@ struct Surface { @builtin(position) p:vec4f,@location(0) world:vec3f,@location(1
 }
 fn mineral(p:vec3f,n:vec3f)->vec3f {
  let weights=pow(abs(n),vec3f(4.));let w=weights/max(dot(weights,vec3f(1.)),.001);
- let macro=fbm(p.yz*.034)*w.x+fbm(p.xz*.034)*w.y+fbm(p.xy*.034)*w.z;
+ let largeScale=fbm(p.yz*.034)*w.x+fbm(p.xz*.034)*w.y+fbm(p.xy*.034)*w.z;
  let mid=fbm(p.yz*.41)*w.x+fbm(p.xz*.41)*w.y+fbm(p.xy*.41)*w.z;
  let grain=noise(p.yz*2.4)*w.x+noise(p.xz*2.4)*w.y+noise(p.xy*2.4)*w.z;
  let cracks=1.-smoothstep(.014,.07,abs(mid-.49));
  let vein=(1.-smoothstep(.014,.035,abs(sin(dot(p,vec3f(.93,.70,-.52))+mid*.56))))*.065;
- return mix(vec3f(.19,.215,.205),vec3f(.49,.44,.35),macro)*mix(.68,1.25,mid)*mix(.87,1.1,grain)*(1.-cracks*.14)+vec3f(.65,.60,.47)*vein;
+ return mix(vec3f(.19,.215,.205),vec3f(.49,.44,.35),largeScale)*mix(.68,1.25,mid)*mix(.87,1.1,grain)*(1.-cracks*.14)+vec3f(.65,.60,.47)*vein;
 }
 fn diffuseSurface(color:vec3f,n:vec3f,p:vec3f,wet:f32)->vec3f {
  let sunlight=lightAt(p);let ndl=max(dot(n,SUN),0.);
