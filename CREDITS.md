@@ -20,6 +20,10 @@ The unmodified compiler and runtime are included from RealGrass's pinned submodu
 
 ## RealIsland integration
 
+RealIsland’s original integration code is licensed under the [MIT License](LICENSE),
+Copyright (c) 2026 SamG-Coder. Third-party code and assets retain the licences
+and notices documented here and in their source directories.
+
 New shared terrain, spring/ocean boundary conditions, GPU terrain publication, common rendering adapter, camera, controls, build scripts and integration tests are in the top-level `src`, `kernels`, `scripts` and `tests` folders. Source adapters fail if expected upstream patterns change. Precompiled deployment artifacts omit compiler ASTs, but the editable CUDA originals and linked CUDA output are included.
 
 ## Pine bark and twig textures

@@ -153,3 +153,9 @@ Reflection contribution stays reduced (0.12) as requested.
 Run `python scripts/test-dynamic-water.py` with the source server on port 5180
 for overlap preservation, camera travel, impact/dry-bed tests and a moving clip.
 The report and captures are written to `reports/dynamic-water/`.
+
+## Licence
+
+RealIsland’s original code is licensed under the [MIT License](LICENSE).
+Third-party code and assets retain their respective licences and copyright
+notices; see [sources and attribution](CREDITS.md).
