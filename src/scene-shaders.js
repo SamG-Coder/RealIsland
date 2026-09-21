@@ -37,7 +37,7 @@ fn nearbyWater(p:vec2f)->f32 {
 fn coverMask(p:vec2f)->f32 {
  if(!inIslandGrid(p)){return 0.;}
  let h=fieldGround(p);let slope=vec2f(fieldGround(p+vec2f(1.,0.))-fieldGround(p-vec2f(1.,0.)),fieldGround(p+vec2f(0.,1.))-fieldGround(p-vec2f(0.,1.)))*.5;
- return smoothstep(2.35,3.3,h)*(1.-smoothstep(130.,155.,h))*(1.-smoothstep(.70,1.15,dot(slope,slope)))*(1.-smoothstep(.02,.055,fieldAt(2u,p)))*(1.-smoothstep(.02,.07,fieldAt(0u,p)-h));
+ return smoothstep(2.35,3.3,h)*(1.-smoothstep(130.,155.,h))*(1.-smoothstep(.70,1.15,dot(slope,slope)))*(1.-smoothstep(.003,.015,fieldAt(2u,p)))*(1.-smoothstep(.02,.07,fieldAt(0u,p)-h));
 }
 fn sediment(p:vec2f)->f32 {
  return smoothstep(3.8,7.,fieldGround(p))*(1.-smoothstep(430.,620.,p.y));
@@ -223,9 +223,13 @@ export const rockShader=common+surfaceVertex+/* wgsl */`
 // Small real geometry, rooted in the same riverbed as the water. Deterministic
 // world cells keep stones fixed as the camera moves; no animated CPU uploads.
 export const foliageShader=common+surfaceVertex+/* wgsl */`
-@vertex fn foliageVs(@builtin(vertex_index) i:u32)->Surface {
+override TREE_SEGMENTS:u32=12u;
+override TREE_LOD:u32=0u;
+@group(0) @binding(4) var<storage,read> visibleTrees:array<u32>;
+@vertex fn foliageVs(@builtin(vertex_index) i:u32,@builtin(instance_index) instance:u32)->Surface {
  // Twelve segments preserve the rise and weight-induced sag of each limb.
- let card=i/26u;let local=i%26u;let u=f32(local/2u)/12.;let side=f32(local%2u)*2.-1.;
+ let stride=(TREE_SEGMENTS+1u)*2u;let tree=visibleTrees[TREE_LOD*(arrayLength(&visibleTrees)/3u)+instance];
+ let card=tree*192u+i/stride;let local=i%stride;let u=f32(local/2u)/f32(TREE_SEGMENTS);let side=f32(local%2u)*2.-1.;
  let p0=geometry[card*8u];let p1=geometry[card*8u+2u];
  let p2=geometry[card*8u+4u];let p3=geometry[card*8u+6u];
  let b=geometry[card*8u+1u];let a=mix(mix(p0,p1,u),mix(p3,p2,u),(side+1.)*.5);
@@ -235,7 +239,10 @@ export const foliageShader=common+surfaceVertex+/* wgsl */`
  let pendant=reach*.10*abs(side)*sin(u*3.14159265)*load;
  let wind=sin(a.x*.12+a.z*.09-cam.eye.w*1.3)*.10*cam.atmosphere.y;
  let world=a.xyz+vec3f(wind*u*u,arc-pendant,wind*.37*u*u)*limb;
- var o:Surface;o.world=world;o.normal=normalize(b.xyz);o.p=project(world);o.uv=vec2f(u,side);o.data=vec4f(a.w,b.w,0.,0.);return o;
+ let axis=normalize(p1.xyz+p2.xyz-p0.xyz-p3.xyz+vec3f(.00001,0.,0.));
+ let bendSlope=(.32-1.16*u)*load*limb;
+ let normal=normalize(b.xyz-vec3f(axis.x,0.,axis.z)*bendSlope*b.y);
+ var o:Surface;o.world=world;o.normal=normal;o.p=project(world);o.uv=vec2f(u,side);o.data=vec4f(a.w,b.w,0.,0.);return o;
 }
 
 @fragment fn foliageFs(v:Surface)->@location(0) vec4f {
@@ -243,7 +250,7 @@ export const foliageShader=common+surfaceVertex+/* wgsl */`
  // Photographed twig atlas sampled along paired secondary branches.
  let lateral=abs(v.uv.y);let side=sign(v.uv.y);
  let envelope=pow(max(0.,1.-u),.72)*smoothstep(0.,.10,u)*(.88+.09*sin(u*23.+seed*11.));
- let station=(u-lateral*.20)*11.+side*.24+seed;
+ let station=(u-lateral*(.16+seed*.09))*(15.+seed*4.)+side*.24+seed;
  let twigUV=vec2f(fract(station)*.237,(1.-clamp(lateral/max(envelope,.001),0.,1.))*.445);
  let alpha=textureSample(treeAlpha,clampSampler,twigUV).r;
  let texel=textureSample(treeAlbedo,clampSampler,twigUV).rgb;
@@ -252,9 +259,16 @@ export const foliageShader=common+surfaceVertex+/* wgsl */`
    return vec4f(diffuseSurface(bark,normalize(v.normal),v.world,0.),1.);
  }
  if(lateral>envelope || (alpha<.24 && lateral>.012*(1.-u)) || (cam.growth.w>.5&&v.world.y<isle.weather.x)){discard;}
- let color=texel*vec3f(.82,1.12,.80)*mix(.82,1.15,seed);
+ // The atlas has black outside its alpha mask. Undo that filtered black
+ // contribution so distant needles do not turn into nearly black cones.
+ let color=min(texel/mix(1.,max(alpha,.24),.65),vec3f(.85))*vec3f(.94,1.16,.87)*mix(.93,1.13,seed);
  let n=normalize(v.normal+vec3f(v.uv.y*.15,.35,u*.15));
- return vec4f(diffuseSurface(color,n,v.world,0.)*(.72+.28*smoothstep(.25,.85,v.data.y)),1.);
+ // Thin needle clusters receive light on both sides. Outer growth is more
+ // exposed than the shaded branch interior; no extra shadow pass is required.
+ let sun=lightAt(v.world);let wrap=.25+.75*abs(dot(n,SUN));
+ let exposure=mix(.65,1.,smoothstep(.05,.8,u));
+ let lighting=vec3f(.36,.43,.49)*exposure+vec3f(1.12,1.04,.84)*wrap*sun;
+ return vec4f(aerial(pow(max(color,vec3f(0.)),vec3f(2.2))*lighting,v.world),1.);
 }
 `;
 function adaptMeadow(source) {

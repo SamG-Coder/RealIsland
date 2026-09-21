@@ -268,17 +268,21 @@ __global__ void forestVertices(const float *World,const float *Trees,float *Foli
  if(b>=184){
   float angle=((float)(b-184)+(corner>=2?1.0f:0.0f))*.78539816f;
   float rad=h*(up>.5f?.0008f:.019f);
-  x+=cosf(angle)*rad;z+=sinf(angle)*rad;y+=up*h*1.025f-.25f;
+  x+=cosf(angle)*rad;z+=sinf(angle)*rad;y+=up*h*1.0f-.25f;
   nx=cosf(angle);ny=.025f;nz=sinf(angle);material=-1.0f;
  }else{
   int branch=b/2,plane=b%2;
   float rnd=randomRiver(World,t*53+branch+417);
-  f=.075f+(float)branch*.0099f+(rnd-.5f)*.018f;
+  float crownBase=.08f+.13f*seed;
+  f=crownBase+(1.0f-crownBase)*(float)branch/93.0f+(rnd-.5f)*.025f;
   float a=(float)branch*2.399963f+seed*6.283185f+(rnd-.5f)*.4f;
-  float reach=h*(.29f+.035f*seed)*powf(1.0f-f,.86f)*(.82f+.30f*rnd);
+  float family=.23f+.11f*seed;
+  float reach=h*family*powf(1.0f-f,.72f+.35f*seed)*(.66f+.52f*rnd);
+  // Unequal crown exposure and irregular branch lengths break the perfect cone.
+  reach*=.88f+.12f*cosf(a-seed*11.0f);
   float drop=reach*.06f*f;
-  float width=reach*.46f;
-  float roll=plane==0?.25f:-1.0f;
+  float width=reach*(.32f+.09f*rnd);
+  float roll=plane==0?.15f+rnd*.35f:-.75f-rnd*.4f;
   float across=side*width,vertical=across*sinf(roll);
   material=seed*.4f+rnd*.6f;
   x+=cosf(a)*up*reach-sinf(a)*across*cosf(roll);

@@ -160,8 +160,13 @@ export function assembleSources({coast, coastRender, river, impacts, grass, plan
   meadow=replaceOnce(meadow,'sqrtf(x*x+z*z+eyeY*eyeY)', 'sqrtf(x*x+z*z+(r.y-eyeY)*(r.y-eyeY))');
   meadow=replaceOnce(meadow,'unsigned int inspect) {','unsigned int inspect, const float *S, int nx, int nz, float x0, float z0, float dx, float dz) {');
   meadow=replaceOnce(meadow,'if (distance>46.0f || depth < -3.5f) return;',`if (distance>46.0f || depth < -3.5f) return;
-        int gi=(int)cap((r.x-x0)/dx,0.0f,(float)nx-1.0f),gj=(int)cap((r.z-z0)/dz,0.0f,(float)nz-1.0f),gk=gj*nx+gi,gn=nx*nz;
-        if(S[2*gn+gk]>.025f && r.y<S[gk]+S[2*gn+gk]-.02f)return;`);
+        // Match the bilinear wet/rock mask used when roots are generated.
+        float gx=cap((r.x-x0)/dx,0.0f,(float)nx-1.001f),gz=cap((r.z-z0)/dz,0.0f,(float)nz-1.001f);
+        int gi=(int)gx,gj=(int)gz,gk=gj*nx+gi,gn=nx*nz;
+        float fx=gx-(float)gi,fz=gz-(float)gj;
+        float wet=adv(S+2*gn,gk,nx,1.0f-fx,fx,1.0f-fz,fz);
+        float bed=adv(S,gk,nx,1.0f-fx,fx,1.0f-fz,fz);
+        if(wet>.005f && r.y<bed+wet)return;`);
   const grassSource=[cudaFunction(hydro,'cap'),cudaFunction(hydro,'adv'),meadow].join('\n');
   return {source,grassSource};
 }

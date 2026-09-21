@@ -1,3 +1,4 @@
+import {ForestVisibility,TREE_SEGMENTS} from './forest-visibility.js';
 import {createCoastNoise} from './coast-noise.js';
 import * as shaders from './scene-shaders.js';
 import {createSeededMaterials} from '../vendor/realgrass/src/materials.js';
@@ -78,12 +79,14 @@ export class IslandRenderer {
       }
       this.treeTextures.push({texture,view:texture.createView()});
     }
-    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT)),foliage:this.uploadIndices('branch topology',makeBranchIndices(this.sim.treeCount*192))};
+    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT))};
+    this.forest=new ForestVisibility(d,this.sim.Trees,this.sim.treeCount);await this.forest.initialize();
+    this.treeGeometry=TREE_SEGMENTS.map(n=>this.uploadIndices('tree branch LOD '+n,makeBranchIndices(192,n)));
     const alpha={color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}};
     const recipes=[
       ['environment',shaders.environmentShader(this.q.cloudSteps),'screenVs','environmentFs',false],
       ['light',shaders.lightShader,'screenVs','lightFs',false],['sky',shaders.skyShader,'screenVs','skyFs',true,{},false],
-      ['terrain',shaders.terrainShader,'terrainVs','terrainFs',true],['rocks',shaders.rockShader,'rockVs','rockFs',true],['foliage',shaders.foliageShader,'foliageVs','foliageFs',true],
+      ['terrain',shaders.terrainShader,'terrainVs','terrainFs',true],['rocks',shaders.rockShader,'rockVs','rockFs',true],...TREE_SEGMENTS.map((n,lod)=>['foliage'+lod,shaders.foliageShader,'foliageVs','foliageFs',true,{TREE_SEGMENTS:n,TREE_LOD:lod}]),
       ['grass0',shaders.residentGrass,'vs','fs',true,{SEGMENTS:5}],['grass1',shaders.residentGrass,'vs','fs',true,{SEGMENTS:2}],['grass2',shaders.residentGrass,'vs','fs',true,{SEGMENTS:1}],
       ['seeds',shaders.residentGrass,'seedVs','seedFs',true],
       ['distant',shaders.distantMeadow(this.q.distant),'vs','fs',true,{CELL:1.5,INNER:24,OUTER:220,DIST_SEGMENTS:2,UNDERSTORY:false}],
@@ -126,6 +129,7 @@ export class IslandRenderer {
       const slot=kind==='seeds'?3:Number(kind.slice(5));binding[3].resource={buffer:s.visible.gpuBuffer,offset:slot*s.count*4,size:s.count*4};binding[4].resource=resource(s.biology);
     }else if(kind==='rocks')binding[0].resource=resource(s.RockWet);
     if(kind==='terrain'){binding[0].resource=resource(this.sim.Eta);binding[1].resource=resource(this.sim.S);}
+    if(kind==='foliage')binding[3].resource=resource(this.forest.views[mirror?1:0].ids);
     if(['terrain','rocks','foliage'].includes(kind))binding[2].resource=resource(this.sim.ForestShade);
     const geometry={terrain:s.Terrain,rocks:s.RockMesh,foliage:s.Foliage,spray:s.Spray}[kind];
     return this.device.createBindGroup({layout:this.worldLayout,entries:[{binding:0,resource:{buffer:mirror?this.mirrorCamera:this.camera}},...binding,...this.materials.entries,
@@ -161,7 +165,11 @@ export class IslandRenderer {
     pass.setBindGroup(1,this.safeImages);
     const prefix=mirror?'m:':'';
     pass.setPipeline(this.pipelines.sky);pass.setBindGroup(0,this.groups[prefix+'sky']);pass.draw(3);
-    for(const name of ['terrain','rocks','foliage']){if(only&&only!==name)continue;pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[prefix+name]);pass.setIndexBuffer(this.geometry[name].buffer,'uint32');pass.drawIndexed(this.geometry[name].count);}
+    for(const name of ['terrain','rocks']){if(only&&only!==name)continue;pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[prefix+name]);pass.setIndexBuffer(this.geometry[name].buffer,'uint32');pass.drawIndexed(this.geometry[name].count);}
+    if(!only||only==='foliage')for(let lod=0;lod<3;lod++){
+      pass.setPipeline(this.pipelines['foliage'+lod]);pass.setBindGroup(0,this.groups[prefix+'foliage']);
+      pass.setIndexBuffer(this.treeGeometry[lod].buffer,'uint32');pass.drawIndexedIndirect(this.forest.views[mirror?1:0].commands,lod*20);
+    }
     if(!mirror&&(!only||only==='terrain')){pass.setPipeline(this.pipelines.terrain);pass.setBindGroup(0,this.groups.patch);pass.setIndexBuffer(this.patchGeometry.buffer,'uint32');pass.drawIndexed(this.patchGeometry.count);}
     if(grass&&(!only||only==='grass')){for(let i=0;i<3;i++){pass.setPipeline(this.pipelines['grass'+i]);pass.setBindGroup(0,this.groups['grass'+i]);pass.drawIndirect(this.sim.commands.gpuBuffer,i*16);}
       pass.setPipeline(this.pipelines.seeds);pass.setBindGroup(0,this.groups.seeds);pass.drawIndirect(this.sim.commands.gpuBuffer,48);
@@ -180,6 +188,8 @@ export class IslandRenderer {
     f.set([g.x0,g.z0,(g.nx-1)*g.dx,(g.nz-1)*g.dz],20);d.queue.writeBuffer(this.island,0,data);d.queue.writeBuffer(this.postUniform,0,new Float32Array([this.exposure,0,0,0]));
     f.set([pg.x0,pg.z0,pg.dx,pg.dz]);u.set([pg.nx,pg.nz,this.q.reflection?1:0,1],4);d.queue.writeBuffer(this.patchUniform,0,data);
     const encoder=d.createCommandEncoder({label:'RealIsland frame'});
+    this.forest.aspect=this.width/this.height;this.forest.encode(encoder,camera,basis,s.tide,false);
+    if(this.q.reflection)this.forest.encode(encoder,camera,basis,s.tide,true);
     if((stage==='all'&&now-this.lastWeather>.12)||stage==='weather'){
       for(const name of ['environment','light']){const pass=encoder.beginRenderPass({label:name,colorAttachments:[{view:this[name].view,loadOp:'clear',storeOp:'store',clearValue:{r:1,g:1,b:1,a:1}}]});pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[name]);pass.setBindGroup(1,this.blankImages);pass.draw(3);pass.end();}
       this.lastWeather=now;
