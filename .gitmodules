@@ -1,0 +1,9 @@
+[submodule "vendor/realgrass"]
+	path = vendor/realgrass
+	url = https://github.com/SamG-Coder/RealGrass.git
+[submodule "vendor/river"]
+	path = vendor/river
+	url = https://github.com/SamG-Coder/MountainRIver.git
+[submodule "vendor/coast"]
+	path = vendor/coast
+	url = https://github.com/SamG-Coder/coastal-simulation-cuda-webshader.git

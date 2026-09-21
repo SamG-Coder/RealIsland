@@ -1,0 +1,6 @@
+{
+  "realgrass": {"repository":"SamG-Coder/RealGrass","commit":"f68b918796bbe3409d399e9640ca1f63164d7d26","path":"vendor/realgrass"},
+  "river": {"repository":"SamG-Coder/MountainRIver","commit":"ed17b133ce37f8c97e93262681041d2aded2d8e2","path":"vendor/river"},
+  "coast": {"repository":"SamG-Coder/coastal-simulation-cuda-webshader","commit":"e5a80fe42b4eeba6c01de1467035bafd69592d3e","path":"vendor/coast"},
+  "runtime": {"repository":"SamG-Coder/cuda-webshader","commit":"d1abd25c32b93d40ce13c7757fccdd0ce6e2f01a","path":"vendor/realgrass/vendor/cuda-webshader"}
+}
