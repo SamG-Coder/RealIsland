@@ -1,5 +1,26 @@
 # RealIsland
 
+[![Pages](https://github.com/SamG-Coder/RealIsland/actions/workflows/pages.yml/badge.svg)](https://github.com/SamG-Coder/RealIsland/actions/workflows/pages.yml)
+[![Build and validate](https://github.com/SamG-Coder/RealIsland/actions/workflows/validate.yml/badge.svg)](https://github.com/SamG-Coder/RealIsland/actions/workflows/validate.yml)
+
+**[Play RealIsland](https://samg-coder.github.io/RealIsland/)** · [How to play](docs/how-to-play.md) · [Actions](https://github.com/SamG-Coder/RealIsland/actions)
+
+A first-person survival prototype: explore, gather berries, find freshwater,
+and keep yourself supplied. Grass bends around your legs and moving through
+water disturbs the live simulation.
+
+![RealIsland title screen overlooking the island](docs/screenshots/title.jpg)
+
+| Explore on foot | Play with two-thumb controls |
+| --- | --- |
+| ![First-person river valley with survival HUD](docs/screenshots/first-person.jpg) | ![Landscape mobile controls with movement and look sticks](docs/screenshots/mobile-landscape.jpg) |
+| Desktop, High quality | Touch layout, Low quality |
+
+![Coastal waves and rocks](docs/screenshots/coast.jpg)
+
+*Actual captures from the running game. The mobile image uses an emulated phone
+viewport on desktop hardware; it does not demonstrate physical-phone frame rates.*
+
 A connected procedural island using **RealGrass, MountainRIver and Saltreach**.
 Their pinned original repositories remain in `vendor/`.
 
@@ -7,6 +28,31 @@ Roughly two kilometres of island sit within a 3.2 km simulation domain. A downhi
 river flows between upland ridges and joins the same water grid as the sea.
 Grass, rocks, trees and shoreline wetness use the shared terrain. See the
 [researched design](docs/island-design.md) for references, dimensions and limits.
+
+## Mobile
+
+Open the [HTTPS game link](https://samg-coder.github.io/RealIsland/) on a device
+with a WebGPU-capable browser. Play **landscape**: the left analog stick moves,
+the right looks around. Partial stick travel walks slowly; hold **Sprint** to
+run. **Jump**, **Gather / Drink**, **Backpack**, and **Pause** have touch buttons.
+
+New touch sessions default to Low quality and adaptive resolution. Controls
+respect screen cutouts and reset on interruption. Portrait mode pauses gameplay.
+Tap **⛶** or **Enter landscape** to request fullscreen and landscape orientation;
+browsers that cannot lock orientation provide a manual rotation prompt.
+
+## Menus and actions
+
+| Screen | Actions |
+| --- | --- |
+| Title | New journey, Continue, Settings |
+| Pause | Resume, Save, Settings, Save & return to title |
+| Backpack | View gathered berries and eat to restore food |
+| Settings | Quality, adaptive resolution, sensitivity, mobile fullscreen |
+| Recovery | Return to the starting area after health runs out |
+| Portrait prompt | Pause safely while turning the phone landscape |
+
+[Full controls, saving, and the survival loop →](docs/how-to-play.md)
 
 ## Run
 
@@ -51,6 +97,14 @@ There, drag to look, WASD/arrows fly, Q/E change height, Shift increases speed,
 
 See [the survival foundation](docs/survival-foundation.md) for implementation
 limits and validation.
+
+## GitHub Pages and Actions
+
+The [Pages workflow](.github/workflows/pages.yml) runs on pushes to `main` or
+manual dispatch. It checks out pinned submodules, runs tests, compiles the CUDA
+kernels, builds the self-contained site and deploys `dist/` to GitHub Pages.
+The separate [validation workflow](.github/workflows/validate.yml) runs browser
+WebGPU checks and retains build reports.
 
 ## Build and validate
 

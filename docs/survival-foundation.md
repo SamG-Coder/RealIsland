@@ -1,6 +1,6 @@
 # First-person survival foundation
 
-The default experience is a desktop keyboard/mouse first-person prototype.
+The default experience is a first-person prototype with desktop and touch controls.
 Menus provide new/continue, pause, settings, backpack, death and recovery.
 The camera stays 1.65 metres above the collision-controlled player; there is
 no orbit camera or visible placeholder survivor. Mouse capture is opt-in by
@@ -41,7 +41,7 @@ The hardware-browser playthrough tests real menus and keyboard movement, jump,
 eye height, absence of a player mesh, pause, save/reload, gathering and eating.
 
 Berry bushes are prototype geometry. Crafting, shelter, tools, combat, audio,
-touch controls and a longer progression loop are not implemented in this slice.
+a longer progression loop are not implemented in this slice.
 
 
 ## Player contact with the environment
@@ -63,3 +63,5 @@ Pausing and leaving gameplay clear player contact. Hardware validation:
 `python scripts/test-player-interaction.py` checks grass recovery and locality,
 water volume, propagated surface displacement, dry/air/stationary rejection,
 and first-person contact screenshots.
+
+Mobile controls and landscape behavior are documented in [How to play](how-to-play.md).
