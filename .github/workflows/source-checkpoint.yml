@@ -1,0 +1,33 @@
+name: Pinned source checkpoint
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/source-checkpoint.yml'
+permissions:
+  contents: read
+jobs:
+  sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve the exact upstream implementations
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+          git clone https://github.com/SamG-Coder/RealGrass.git vendor/realgrass
+          git -C vendor/realgrass checkout f68b918796bbe3409d399e9640ca1f63164d7d26
+          git -C vendor/realgrass submodule update --init --recursive
+          git clone https://github.com/SamG-Coder/MountainRIver.git vendor/river
+          git -C vendor/river checkout ed17b133ce37f8c97e93262681041d2aded2d8e2
+          git clone https://github.com/SamG-Coder/coastal-simulation-cuda-webshader.git vendor/coast
+          git -C vendor/coast checkout e5a80fe42b4eeba6c01de1467035bafd69592d3e
+          for component in realgrass river coast; do git -C vendor/$component rev-parse HEAD > vendor/$component/UPSTREAM-COMMIT.txt; done
+          tar --exclude='.git' --exclude='node_modules' -czf realisland-pinned-sources.tar.gz vendor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: realisland-pinned-sources
+          path: realisland-pinned-sources.tar.gz
+          retention-days: 14
+          if-no-files-found: error
