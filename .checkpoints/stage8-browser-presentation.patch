@@ -1,0 +1,8 @@
+diff --git a/scripts/test-gpu.py b/scripts/test-gpu.py
+--- a/scripts/test-gpu.py
++++ b/scripts/test-gpu.py
+@@ -14,3 +14,3 @@
+ with sync_playwright() as p:
+-    options={'headless':True,'args':['--no-sandbox','--disable-gpu-watchdog','--disable-dev-shm-usage','--enable-unsafe-webgpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
++    options={'headless':True,'channel':'chromium','args':['--no-sandbox','--disable-gpu-watchdog','--disable-dev-shm-usage','--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-angle=vulkan','--disable-vulkan-surface','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
+     if os.environ.get('CHROMIUM_PATH'): options['executable_path']=os.environ['CHROMIUM_PATH']
