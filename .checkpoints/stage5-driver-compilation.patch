@@ -1,0 +1,118 @@
+diff --git a/kernels/island.cu b/kernels/island.cu
+--- a/kernels/island.cu
++++ b/kernels/island.cu
+@@ -119,15 +119,16 @@
+ 
+-// A separate pass samples the cached ground once per cell. This keeps the
+-// original rock silhouette/obstacle equation without inlining the whole island
+-// generator into every iteration of a 105-rock loop.
+-__global__ void applyIslandRocks(const float *World,const float *R,float *S,int nx,int nz,float x0,float z0,float dx,float dz,int start){
+- int k=start+blockIdx.x*blockDim.x+threadIdx.x,n=nx*nz;if(k>=n)return;
+- float x=x0+(float)(k%nx)*dx,z=z0+(float)(k/nx)*dz;
+- float ground=S[n+k],bed=ground,level=S[k]+S[2*n+k];
+- for(int r=0;r<105;r++){
+-  int a=r*8;float radius=fmaxf(R[a+2],R[a+3])*1.4f;
+-  if(fabsf(x-R[a])<radius&&fabsf(z-R[a+1])<radius)bed=fmaxf(bed,cachedRock(World,R,r,x,z,ground));
+- }
+- S[k]=bed;S[2*n+k]=fmaxf(0.0f,level-bed);
+- if(S[2*n+k]<.002f){S[3*n+k]=0.0f;S[4*n+k]=0.0f;S[7*n+k]=0.0f;S[8*n+k]=0.0f;}
++// One bounded patch per rock. Ordered GPU dispatches preserve overlapping
++// obstacle maxima without atomic floats or a per-cell all-rock traversal.
++__global__ void applyIslandRocks(const float *World,const float *R,float *S,int nx,int nz,float x0,float z0,float dx,float dz,int rockIndex){
++ int k=blockIdx.x*blockDim.x+threadIdx.x,n=nx*nz,a=rockIndex*8;
++ float radius=fmaxf(R[a+2],R[a+3])*1.4f;
++ int ix=max(0,(int)floorf((R[a]-radius-x0)/dx)),iz=max(0,(int)floorf((R[a+1]-radius-z0)/dz));
++ int ex=min(nx-1,(int)ceilf((R[a]+radius-x0)/dx)),ez=min(nz-1,(int)ceilf((R[a+1]+radius-z0)/dz));
++ int cols=ex-ix+1,rows=ez-iz+1;if(cols<1||rows<1||k>=cols*rows)return;
++ int i=ix+k%cols,j=iz+k/cols,q=j*nx+i;
++ float x=x0+(float)i*dx,z=z0+(float)j*dz;
++ float ground=S[n+q],level=S[q]+S[2*n+q];
++ float bed=fmaxf(S[q],cachedRock(World,R,rockIndex,x,z,ground));
++ S[q]=bed;S[2*n+q]=fmaxf(0.0f,level-bed);
++ if(S[2*n+q]<.002f){S[3*n+q]=0.0f;S[4*n+q]=0.0f;S[7*n+q]=0.0f;S[8*n+q]=0.0f;}
+ }
+diff --git a/scripts/build-kernels.mjs b/scripts/build-kernels.mjs
+--- a/scripts/build-kernels.mjs
++++ b/scripts/build-kernels.mjs
+@@ -4,2 +4,3 @@
+ import {assembleSources} from '../src/source-assembly.js';
++import {visualMath} from '../src/visual-math.js';
+ const root=new URL('../',import.meta.url);
+@@ -15,2 +16,3 @@
+ const artifacts={};
++const visualEntries=new Set(['initializeRocks','initializeIsland','applyIslandRocks','islandTerrain','rockVertices','treeInstances','foliageVertices','grow','simulate','selectGrass','clearDraws']);
+ for(const [text,names] of [[source,hydro],[grassSource,meadow]])for(const entry of names){
+@@ -18,2 +20,3 @@
+   const artifact=compile(text,{entry,workgroupSize:[entry==='clearDraws'?16:128,1,1]});
++  if(visualEntries.has(entry))artifact.wgsl=visualMath(artifact.wgsl);
+   // The runtime needs WGSL and binding metadata, not the megabyte-scale compiler AST.
+@@ -21,3 +24,3 @@
+   artifacts[entry]=deployArtifact;
+-  report.kernels.push({entry,wgslLines:artifact.wgsl.split('\n').length,storageBindings:artifact.metadata.bindings.length,compileMs:Math.round((performance.now()-start)*100)/100});
++  report.kernels.push({entry,arithmetic:visualEntries.has(entry)?'native f32 visual math':'upstream compensated f32',wgslLines:artifact.wgsl.split('\n').length,storageBindings:artifact.metadata.bindings.length,compileMs:Math.round((performance.now()-start)*100)/100});
+   console.log('Compiled',entry,report.kernels.at(-1).wgslLines,'WGSL lines');
+diff --git a/src/scene-shaders.js b/src/scene-shaders.js
+--- a/src/scene-shaders.js
++++ b/src/scene-shaders.js
+@@ -1 +1,2 @@
++import {visualMath} from './visual-math.js';
+ import {common as meadowCommon,grass,distantGrass,distantFlowers} from '../vendor/realgrass/src/shaders.js';
+@@ -47,4 +48,4 @@
+ function adaptCommon(source){
+- return source.replace('const SUN = vec3f(-0.48,0.71,-0.51);','const SUN = vec3f(-0.480096,0.710142,-0.510102);')
+-   .replace('let sunlight=cloudSunlight(p);','let sunlight=lightAt(p);') + islandBindings;
++ return visualMath(source.replace('const SUN = vec3f(-0.48,0.71,-0.51);','const SUN = vec3f(-0.480096,0.710142,-0.510102);')
++   .replace('let sunlight=cloudSunlight(p);','let sunlight=lightAt(p);')) + islandBindings;
+ }
+diff --git a/src/simulation.js b/src/simulation.js
+--- a/src/simulation.js
++++ b/src/simulation.js
+@@ -36,3 +36,3 @@
+   }
+-  values(extra={}) {return {...this.grid,n:this.count,start:0,count:this.n,dt:1/120,enhanced:1,time:this.time,flow:this.settings.flow,closed:0,seed:this.seed,reset:0,season:this.settings.season,water:this.settings.moisture,...extra};}
++  values(extra={}) {return {...this.grid,n:this.count,start:0,count:this.n,rockIndex:0,dt:1/120,enhanced:1,time:this.time,flow:this.settings.flow,closed:0,seed:this.seed,reset:0,season:this.settings.season,water:this.settings.moisture,...extra};}
+   dispatch(batch,name,extra={},count=this.n) {
+@@ -48,3 +48,3 @@
+     const add=(entry,count,extra={},split=false)=>{for(let start=0;start<count;start+=split?4096:count)jobs.push({entry,count:Math.min(split?4096:count,count-start),extra:{...extra,...(split?{start}: {})}});};
+-    add('initializeIsland',this.n,{},true);add('initializeRocks',ROCK_COUNT,{count:ROCK_COUNT});add('applyIslandRocks',this.n,{},true);
++    add('initializeIsland',this.n,{},true);add('initializeRocks',ROCK_COUNT,{count:ROCK_COUNT});for(let rockIndex=0;rockIndex<ROCK_COUNT;rockIndex++)add('applyIslandRocks',4096,{rockIndex});
+     add('islandTerrain',this.n,{},true);add('rockWetness',ROCK_COUNT,{reset:1});
+diff --git a/src/source-assembly.js b/src/source-assembly.js
+--- a/src/source-assembly.js
++++ b/src/source-assembly.js
+@@ -96,3 +96,9 @@
+   trees=trees.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
+-  const source = [hydro,linked,valley,shore,islandHelpers,terrainCache,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed'].map(take),cachedRock,rockGeometry,clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
++  let source = [hydro,linked,valley,shore,islandHelpers,terrainCache,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed'].map(take),cachedRock,rockGeometry,clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
++  // All scenery powers have nonnegative bases. Avoid the compiler's generic
++  // powf integer-exponent path, which otherwise pulls software binary64 loops
++  // into float-only scene generation and can explode driver compilation time.
++  // This is normal single-precision exp2/log2 scene math, not a solver change.
++  const positivePower='__device__ float scenePow(float base,float exponent){if(base<=0.0f)return exponent==0.0f?1.0f:0.0f;return exp2f(log2f(base)*exponent); }';
++  source=positivePower+'\n'+source.replaceAll('powf(', 'scenePow(');
+   let meadow=grass.replace('// PLANT_MODEL',plant);
+diff --git a/src/visual-math.js b/src/visual-math.js
+new file mode 100644
+--- /dev/null
++++ b/src/visual-math.js
+@@ -0,0 +1,13 @@
++/** Standard GPU f32 division for visual-only code. The finite-volume water
++ * solver keeps the upstream compensated division. Source bounds never rely on
++ * subnormal/NaN division in scenery. This avoids hundreds of inlined branches
++ * in the original weather shader on software/mobile drivers.
++ */
++export function visualMath(wgsl) {
++  const start=wgsl.indexOf('fn cw_divide_f32(');
++  if(start<0)return wgsl;
++  const open=wgsl.indexOf('{',start);let end=open+1,depth=1;
++  for(;depth&&end<wgsl.length;end++){if(wgsl[end]==='{')depth++;if(wgsl[end]==='}')depth--;}
++  if(depth)throw Error('Invalid upstream f32 division helper.');
++  return wgsl.slice(0,start)+'fn cw_divide_f32(a:f32,b:f32)->f32 {return a/b;}'+wgsl.slice(end);
++}
+diff --git a/tests/integration.test.mjs b/tests/integration.test.mjs
+--- a/tests/integration.test.mjs
++++ b/tests/integration.test.mjs
+@@ -21 +21,3 @@
+ test('static rock and tree kernels use the shared terrain cache',()=>{assert.match(assembly.source,/void applyIslandRocks/);assert.match(assembly.source,/float cachedRock/);assert.match(assembly.source,/float cachedField/);});
++
++test('finite-volume passes retain the original compensated arithmetic',async()=>{const a=JSON.parse(await text('generated/kernels.json'));for(const entry of ['faces','integrate','transport','advectMomentum'])assert.match(a[entry].wgsl,/residual/);assert.doesNotMatch(a.simulate.wgsl,/residual/);assert.doesNotMatch(a.initializeIsland.wgsl,/cw_f64/);});
