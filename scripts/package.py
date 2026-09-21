@@ -10,8 +10,8 @@ for p in sorted(ROOT.rglob('*')):
     rel=p.relative_to(ROOT)
     if any(x in {'.git','node_modules','__pycache__','.build'} for x in rel.parts): continue
     if p.suffix=='.zip' or p.name=='RealIsland-source.sha256': continue
-    if 'vendor/realgrass/vendor/cuda-webshader/' in str(rel):
-        remainder=str(rel).split('vendor/realgrass/vendor/cuda-webshader/',1)[1]
+    if 'vendor/realgrass/vendor/cuda-webshader/' in rel.as_posix():
+        remainder=rel.as_posix().split('vendor/realgrass/vendor/cuda-webshader/',1)[1]
         if not remainder.startswith('src/') and not remainder.startswith(('LICENSE','THIRD_PARTY','NOTICE')): continue
     files.append(p)
 with zipfile.ZipFile(OUT,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:

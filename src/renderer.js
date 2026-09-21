@@ -1,6 +1,7 @@
+import {createCoastNoise} from './coast-noise.js';
 import * as shaders from './scene-shaders.js';
 import {createSeededMaterials} from '../vendor/realgrass/src/materials.js';
-import {ROCK_COUNT,TREE_COUNT,SPRAY_COUNT} from './simulation.js';
+import {ROCK_COUNT,SPRAY_COUNT} from './simulation.js';
 
 export function makeGridIndices(cols,rows,copies=1) {
   const per=(cols-1)*(rows-1)*6,out=new Uint32Array(per*copies);let p=0;
@@ -34,7 +35,7 @@ export class IslandRenderer {
   }
   async initialize(progress) {
     const d=this.device,V=GPUShaderStage.VERTEX,F=GPUShaderStage.FRAGMENT;
-    this.camera=this.buffer('main camera',112);this.mirrorCamera=this.buffer('mirror camera',112);this.island=this.buffer('island parameters',64);this.postUniform=this.buffer('exposure',16);
+    this.camera=this.buffer('main camera',112);this.mirrorCamera=this.buffer('mirror camera',112);this.island=this.buffer('island parameters',96);this.patchUniform=this.buffer('coastal patch parameters',96);this.postUniform=this.buffer('exposure',16);
     this.dummyBuffer=this.buffer('unused storage binding',256,GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST);
     this.sampler=d.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge'});
     this.dummyColor=this.texture('unused color',1,1,'rgba8unorm');d.queue.writeTexture({texture:this.dummyColor.texture},new Uint8Array([255,255,255,255]),{bytesPerRow:4},[1,1]);
@@ -51,15 +52,16 @@ export class IslandRenderer {
     this.worldLayout=d.createBindGroupLayout({label:'single-device island world',entries});
     this.imageLayout=d.createBindGroupLayout({label:'environment refraction reflection',entries:[
       {binding:0,visibility:V|F,texture:{}},{binding:1,visibility:F,texture:{}},{binding:2,visibility:F,texture:{sampleType:'depth'}},
-      {binding:3,visibility:F,texture:{}},{binding:4,visibility:F,texture:{sampleType:'depth'}},{binding:5,visibility:V|F,sampler:{type:'filtering'}}]});
+      {binding:3,visibility:F,texture:{}},{binding:4,visibility:F,texture:{sampleType:'depth'}},{binding:5,visibility:V|F,sampler:{type:'filtering'}},{binding:6,visibility:F,texture:{}},{binding:7,visibility:F,sampler:{type:'filtering'}}]});
     this.layout=d.createPipelineLayout({bindGroupLayouts:[this.worldLayout,this.imageLayout]});
-    progress('Generating original meadow materials',.61);this.materials=await createSeededMaterials(d,this.sim.seed);await d.queue.onSubmittedWorkDone();
-    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT)),foliage:this.uploadIndices('branch topology',makeQuadIndices(TREE_COUNT*96))};
+    progress('Generating original meadow materials',.61);this.coastNoise=await createCoastNoise(this.sim);this.materials=await createSeededMaterials(d,this.sim.seed);await d.queue.onSubmittedWorkDone();
+    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT)),foliage:this.uploadIndices('branch topology',makeQuadIndices(this.sim.treeCount*96))};
     const alpha={color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}};
     const recipes=[
       ['environment',shaders.environmentShader(this.q.cloudSteps),'screenVs','environmentFs',false],
       ['light',shaders.lightShader,'screenVs','lightFs',false],['sky',shaders.skyShader,'screenVs','skyFs',true,{},false],
-      ['terrain',shaders.terrainShader,'surfaceVs','terrainFs',true],['rocks',shaders.rockShader,'rockVs','rockFs',true],['foliage',shaders.foliageShader,'foliageVs','foliageFs',true],
+      ['terrain',shaders.terrainShader,'terrainVs','terrainFs',true],['rocks',shaders.rockShader,'rockVs','rockFs',true],['foliage',shaders.foliageShader,'foliageVs','foliageFs',true],
+      ['pebbles',shaders.pebbleShader,'pebbleVs','pebbleFs',true],
       ['grass0',shaders.residentGrass,'vs','fs',true,{SEGMENTS:5}],['grass1',shaders.residentGrass,'vs','fs',true,{SEGMENTS:2}],['grass2',shaders.residentGrass,'vs','fs',true,{SEGMENTS:1}],
       ['seeds',shaders.residentGrass,'seedVs','seedFs',true],
       ['distant',shaders.distantMeadow(this.q.distant),'vs','fs',true,{CELL:1.5,INNER:24,OUTER:220,DIST_SEGMENTS:2,UNDERSTORY:false}],
@@ -78,7 +80,10 @@ export class IslandRenderer {
     const postModule=await this.module(shaders.postShader,'post processing');
     this.pipelines.post=await d.createRenderPipelineAsync({label:'tone map and edge filter',layout:'auto',vertex:{module:postModule,entryPoint:'screenVs'},fragment:{module:postModule,entryPoint:'postFs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
     this.groups={};
-    for(const mirror of [false,true])for(const kind of ['terrain','rocks','foliage','spray','sky','grass0','grass1','grass2','seeds'])this.groups[(mirror?'m:':'')+kind]=this.worldGroup(kind,mirror);
+    for(const mirror of [false,true])for(const kind of ['terrain','rocks','foliage','pebbles','spray','sky','grass0','grass1','grass2','seeds'])this.groups[(mirror?'m:':'')+kind]=this.worldGroup(kind,mirror);
+    this.patchGeometry=this.uploadIndices('0.3 m coastal mesh',makeGridIndices(this.sim.coast.grid.nx,this.sim.coast.grid.nz));
+    this.groups.patch=this.worldGroup('terrain',false,false,this.sim.coast,this.patchUniform);
+    this.groups.coastSpray=this.worldGroup('spray',false,false,this.sim.coast,this.patchUniform);
     this.groups.light=this.worldGroup('sky',false,true);this.groups.environment=this.worldGroup('sky',false,true);
     this.safeImages=this.images();this.blankImages=this.images(true);
     this.resize();progress('Ready to explore',1);
@@ -91,16 +96,17 @@ export class IslandRenderer {
   uploadIndices(label,array) {
     const buffer=this.buffer(label,array.byteLength,GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST);this.device.queue.writeBuffer(buffer,0,array);return {buffer,count:array.length};
   }
-  worldGroup(kind,mirror=false,blankLight=false) {
-    const s=this.sim,resource=r=>({buffer:r?.gpuBuffer||r||this.dummyBuffer});
+  worldGroup(kind,mirror=false,blankLight=false,s=this.sim,uniform=this.island) {
+    const resource=r=>({buffer:r?.gpuBuffer||r||this.dummyBuffer});
     const binding=[1,2,3,4,5].map(b=>({binding:b,resource:resource(null)}));
     if(kind.startsWith('grass')||kind==='seeds'){
       binding[0].resource=resource(s.roots);binding[1].resource=resource(s.shape);binding[2].resource=resource(s.state);
       const slot=kind==='seeds'?3:Number(kind.slice(5));binding[3].resource={buffer:s.visible.gpuBuffer,offset:slot*s.count*4,size:s.count*4};binding[4].resource=resource(s.biology);
     }else if(kind==='rocks')binding[0].resource=resource(s.RockWet);
+    if(kind==='terrain'){binding[0].resource=resource(this.sim.Eta);binding[1].resource=resource(this.sim.S);}
     const geometry={terrain:s.Terrain,rocks:s.RockMesh,foliage:s.Foliage,spray:s.Spray}[kind];
     return this.device.createBindGroup({layout:this.worldLayout,entries:[{binding:0,resource:{buffer:mirror?this.mirrorCamera:this.camera}},...binding,...this.materials.entries,
-      {binding:9,resource:resource(s.S)},{binding:10,resource:{buffer:this.island}},{binding:11,resource:resource(s.Eta)},
+      {binding:9,resource:resource(s.S)},{binding:10,resource:{buffer:uniform}},{binding:11,resource:resource(s.Eta)},
       {binding:12,resource:(blankLight?this.dummyColor:this.light).view},{binding:13,resource:resource(geometry)}]});
   }
   images(blankEnvironment=false,water=false) {
@@ -108,7 +114,7 @@ export class IslandRenderer {
       {binding:0,resource:(blankEnvironment?this.dummyColor:this.environment).view},
       {binding:1,resource:water?this.opaque.view:this.dummyColor.view},{binding:2,resource:water?this.depth.view:this.dummyDepth.view},
       {binding:3,resource:water?this.mirror.view:this.dummyColor.view},{binding:4,resource:water?this.mirrorDepth.view:this.dummyDepth.view},
-      {binding:5,resource:this.sampler}]});
+      {binding:5,resource:this.sampler},{binding:6,resource:this.coastNoise.view},{binding:7,resource:this.coastNoise.sampler}]});
   }
   resize() {
     const ratio=Math.min(devicePixelRatio||1,this.q.maxDpr)*this.scale;
@@ -133,6 +139,8 @@ export class IslandRenderer {
     const prefix=mirror?'m:':'';
     pass.setPipeline(this.pipelines.sky);pass.setBindGroup(0,this.groups[prefix+'sky']);pass.draw(3);
     for(const name of ['terrain','rocks','foliage']){if(only&&only!==name)continue;pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[prefix+name]);pass.setIndexBuffer(this.geometry[name].buffer,'uint32');pass.drawIndexed(this.geometry[name].count);}
+    if(!mirror&&(!only||only==='terrain')){pass.setPipeline(this.pipelines.terrain);pass.setBindGroup(0,this.groups.patch);pass.setIndexBuffer(this.patchGeometry.buffer,'uint32');pass.drawIndexed(this.patchGeometry.count);}
+    if(!only||only==='rocks'){pass.setPipeline(this.pipelines.pebbles);pass.setBindGroup(0,this.groups[prefix+'pebbles']);pass.draw(480,128*128);}
     if(grass&&(!only||only==='grass')){for(let i=0;i<3;i++){pass.setPipeline(this.pipelines['grass'+i]);pass.setBindGroup(0,this.groups['grass'+i]);pass.drawIndirect(this.sim.commands.gpuBuffer,i*16);}
       pass.setPipeline(this.pipelines.seeds);pass.setBindGroup(0,this.groups.seeds);pass.drawIndirect(this.sim.commands.gpuBuffer,48);
       pass.setBindGroup(0,this.groups.grass0);pass.setPipeline(this.pipelines.distant);pass.draw(36,this.q.distant*this.q.distant);
@@ -143,8 +151,12 @@ export class IslandRenderer {
   frame(camera,basis,now,stage='all') {
     this.resize();const d=this.device,g=this.sim.grid,s=this.sim.settings;
     d.queue.writeBuffer(this.camera,0,this.cameraData(camera,basis));d.queue.writeBuffer(this.mirrorCamera,0,this.cameraData(camera,basis,true));
-    const data=new ArrayBuffer(64),f=new Float32Array(data),u=new Uint32Array(data);
-    f.set([g.x0,g.z0,g.dx,g.dz]);u.set([g.nx,g.nz,this.q.reflection?1:0,0],4);f.set([s.tide,s.strength,s.wind,this.exposure],8);f.set([this.width,this.height,0,0],12);d.queue.writeBuffer(this.island,0,data);d.queue.writeBuffer(this.postUniform,0,new Float32Array([this.exposure,0,0,0]));
+    const data=new ArrayBuffer(96),f=new Float32Array(data),u=new Uint32Array(data);
+    f.set([g.x0,g.z0,g.dx,g.dz]);u.set([g.nx,g.nz,this.q.reflection?1:0,0],4);f.set([s.tide,s.strength,s.wind,this.exposure],8);f.set([this.width,this.height,.12,g.dx],12);
+    const pg=this.sim.coast.grid;
+    f.set([pg.x0+8,pg.z0+8,pg.x0+(pg.nx-1)*pg.dx-8,pg.z0+(pg.nz-1)*pg.dz-8],16);
+    f.set([g.x0,g.z0,(g.nx-1)*g.dx,(g.nz-1)*g.dz],20);d.queue.writeBuffer(this.island,0,data);d.queue.writeBuffer(this.postUniform,0,new Float32Array([this.exposure,0,0,0]));
+    f.set([pg.x0,pg.z0,pg.dx,pg.dz]);u.set([pg.nx,pg.nz,this.q.reflection?1:0,1],4);d.queue.writeBuffer(this.patchUniform,0,data);
     const encoder=d.createCommandEncoder({label:'RealIsland frame'});
     if((stage==='all'&&now-this.lastWeather>.12)||stage==='weather'){
       for(const name of ['environment','light']){const pass=encoder.beginRenderPass({label:name,colorAttachments:[{view:this[name].view,loadOp:'clear',storeOp:'store',clearValue:{r:1,g:1,b:1,a:1}}]});pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[name]);pass.setBindGroup(1,this.blankImages);pass.draw(3);pass.end();}
@@ -161,8 +173,9 @@ export class IslandRenderer {
     encoder.copyTextureToTexture({texture:this.opaque.texture},{texture:this.composite.texture},[this.width,this.height]);
     const water=encoder.beginRenderPass({label:'river, surf and far ocean',colorAttachments:[{view:this.composite.view,loadOp:'load',storeOp:'store'}],depthStencilAttachment:{view:this.depth.view,depthReadOnly:true}});
     water.setBindGroup(0,this.groups.terrain);water.setBindGroup(1,this.waterImages);water.setPipeline(this.pipelines.water);water.setIndexBuffer(this.geometry.terrain.buffer,'uint32');water.drawIndexed(this.geometry.terrain.count);
-    water.setPipeline(this.pipelines.farWater);water.draw(4*32*32*6);
-    water.setPipeline(this.pipelines.spray);water.setBindGroup(0,this.groups.spray);water.draw(6,SPRAY_COUNT);water.end();
+    water.setBindGroup(0,this.groups.patch);water.setIndexBuffer(this.patchGeometry.buffer,'uint32');water.drawIndexed(this.patchGeometry.count);
+    water.setBindGroup(0,this.groups.terrain);water.setPipeline(this.pipelines.farWater);water.draw(4*32*32*6);
+    water.setPipeline(this.pipelines.spray);water.setBindGroup(0,this.groups.spray);water.draw(6,SPRAY_COUNT);water.setBindGroup(0,this.groups.coastSpray);water.draw(6,105*256);water.end();
     }
     if(stage==='water'){d.queue.submit([encoder.finish()]);return;}
     const post=encoder.beginRenderPass({label:'display',colorAttachments:[{view:this.context.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});post.setPipeline(this.pipelines.post);post.setBindGroup(0,this.postGroup);post.draw(3);post.end();

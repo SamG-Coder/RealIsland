@@ -3,3 +3,8 @@ dist/
 .build/
 *.zip
 __pycache__/
+generated/
+*.log
+
+# Reproducible browser captures, videos and diagnostic output
+reports/

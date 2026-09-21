@@ -4,13 +4,13 @@ import {compile} from '../vendor/realgrass/vendor/cuda-webshader/src/compiler/co
 import {assembleSources} from '../src/source-assembly.js';
 import {visualMath} from '../src/visual-math.js';
 const root=new URL('../',import.meta.url);
-const paths={coast:'vendor/coast/src/coastal-kernels.cu',coastRender:'vendor/coast/src/coastal-render.cu',river:'vendor/river/src/river.cu',impacts:'vendor/river/src/impacts.cu',grass:'vendor/realgrass/kernels/grass.cu',plant:'vendor/realgrass/kernels/plant-model.cuh',island:'kernels/island.cu'};
+const paths={coast:'vendor/coast/src/coastal-kernels.cu',coastRender:'vendor/coast/src/coastal-render.cu',river:'vendor/river/src/river.cu',impacts:'vendor/river/src/impacts.cu',grass:'vendor/realgrass/kernels/grass.cu',plant:'vendor/realgrass/kernels/plant-model.cuh',island:'kernels/island.cu',watershed:'kernels/watershed.cuh'};
 const inputs=Object.fromEntries(await Promise.all(Object.entries(paths).map(async([k,p])=>[k,await readFile(new URL(p,root),'utf8')])));
 const {source,grassSource}=assembleSources(inputs);
 await mkdir(new URL('generated/',root),{recursive:true});
 await writeFile(new URL('generated/island-linked.cu',root),source);
 await writeFile(new URL('generated/meadow-linked.cu',root),grassSource);
-const hydro=['initializeRocks','initializeIsland','applyIslandRocks','islandTerrain','advectMomentum','faces','limits','limitFlux','integrate','islandBoundary','transport','commitTransport','riverFoam','reconstruct','reconstructRiver','surfaceDetail','rockVertices','treeInstances','foliageVertices','rockWetness','waterfallSpray','initializeClosedTest'];
+const hydro=['coastalImpact','sprayVertices','generateNoise','scrollWater','commitScroll','coastalPatchBoundary','exchangeCoastalPatch','initializeRocks','initializeIsland','applyIslandRocks','islandTerrain','advectMomentum','faces','limits','limitFlux','integrate','islandBoundary','transport','commitTransport','riverFoam','reconstruct','reconstructRiver','surfaceDetail','rockVertices','treeInstances','foliageVertices','rockWetness','waterfallSpray','initializeClosedTest'];
 const meadow=['grow','simulate','selectGrass','clearDraws'];
 const report={kind:'CUDA-to-WGSL compilation (not GPU execution)',sources:Object.fromEntries(Object.entries(inputs).map(([k,v])=>[paths[k],createHash('sha256').update(v).digest('hex')])),kernels:[]};
 const artifacts={};

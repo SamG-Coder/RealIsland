@@ -1,1 +1,19 @@
-{"name":"realisland","version":"0.1.0","private":true,"type":"module","description":"RealGrass + MountainRIver + Saltreach on one GPU-resident island","scripts":{"start":"node scripts/serve.mjs","build:kernels":"node scripts/build-kernels.mjs","build":"node scripts/build.mjs","test":"node --test tests/*.test.mjs","test:gpu":"python scripts/test-gpu.py"},"engines":{"node":">=22"}}
+{
+  "name": "realisland",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RealGrass + MountainRIver + Saltreach on one GPU-resident island",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "build:kernels": "node scripts/build-kernels.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:gpu": "python scripts/test-gpu.py",
+    "prestart": "node scripts/build-kernels.mjs",
+    "pretest": "node scripts/build-kernels.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
