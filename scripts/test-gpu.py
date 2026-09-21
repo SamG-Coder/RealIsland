@@ -12,7 +12,7 @@ QUALITY=os.environ.get('TEST_QUALITY','test')
 logs=[];result={'testEnvironment':'headless Chromium / SwiftShader','quality':QUALITY,'errors':[]}
 os.environ['DEBUG']='pw:browser'
 with sync_playwright() as p:
-    options={'headless':True,'args':['--no-sandbox','--disable-gpu-watchdog','--disable-dev-shm-usage','--enable-unsafe-webgpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
+    options={'headless':True,'channel':'chromium','args':['--no-sandbox','--disable-gpu-watchdog','--disable-dev-shm-usage','--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-angle=vulkan','--disable-vulkan-surface','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
     if os.environ.get('CHROMIUM_PATH'): options['executable_path']=os.environ['CHROMIUM_PATH']
     browser=p.chromium.launch(**options)
     page=browser.new_page(viewport={'width':960,'height':640})
