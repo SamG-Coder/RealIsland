@@ -18,6 +18,15 @@ water disturbs the live simulation.
 
 ![Coastal waves and rocks](docs/screenshots/coast.jpg)
 
+**Ocean and coastal simulation based on
+[coastal-simulation by iamtechartist (Techartist)](https://github.com/iamtechartist/coastal-simulation)**,
+integrated through [SamG-Coder’s CUDA WebShader port](https://github.com/SamG-Coder/coastal-simulation-cuda-webshader).
+The original provides the coastal simulation, shallow-water equations, materials
+and procedural scene assets.
+[See the original demo](https://iamtechartist.github.io/coastal-simulation/).
+Original MIT copyright and licence notices are retained.
+
+
 *Actual captures from the running game. The mobile image uses an emulated phone
 viewport on desktop hardware; it does not demonstrate physical-phone frame rates.*
 
