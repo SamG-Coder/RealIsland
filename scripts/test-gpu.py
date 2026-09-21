@@ -10,6 +10,7 @@ OUT=ROOT/'reports';OUT.mkdir(exist_ok=True)
 URL=os.environ.get('TEST_URL','http://127.0.0.1:5173/')
 QUALITY=os.environ.get('TEST_QUALITY','test')
 logs=[];result={'testEnvironment':'headless Chromium / SwiftShader','quality':QUALITY,'errors':[]}
+os.environ['DEBUG']='pw:browser'
 with sync_playwright() as p:
     options={'headless':True,'args':['--no-sandbox','--disable-gpu-watchdog','--disable-dev-shm-usage','--enable-unsafe-webgpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
     if os.environ.get('CHROMIUM_PATH'): options['executable_path']=os.environ['CHROMIUM_PATH']
@@ -31,7 +32,12 @@ with sync_playwright() as p:
         log('Executing the first grass/water compute frame.')
         page.evaluate('''async()=>{const a=realIsland,b=a.cameraBasis(a.camera);a.sim.frame(1/60,false,a.camera,b,a.renderer.width/a.renderer.height);await a.sim.runtime.idle();}''')
         log('Compute completed. Executing the first render frame.')
-        page.evaluate('''async()=>{const a=realIsland,b=a.cameraBasis(a.camera);a.renderer.frame(a.camera,b,0);await a.sim.runtime.idle();}''')
+        result['renderStages']=[]
+        for stage in ['weather','sky','terrain','rocks','foliage','grass','reflection','opaque','water','post']:
+            log('Rendering isolated pass: '+stage)
+            page.evaluate('''async(stage)=>{const a=realIsland,b=a.cameraBasis(a.camera);a.renderer.frame(a.camera,b,0,stage);await a.sim.runtime.idle();}''',stage)
+            result['renderStages'].append(stage)
+            log('Completed isolated pass: '+stage)
         log('First render completed.')
         page.screenshot(path=str(OUT/'island.png'),timeout=60000)
         # Freeze and manually render known frames so test readback never races drawing.

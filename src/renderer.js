@@ -127,38 +127,44 @@ export class IslandRenderer {
     const flip=v=>[v[0],mirror?-v[1]:v[1],v[2]];
     return new Float32Array([...eye,this.sim.time,...basis.right,this.width/this.height,...flip(basis.up),this.height,...flip(basis.forward),Math.tan(Math.PI/6),1,0,0,0,0,s.wind,this.sim.seed,s.clouds,s.season,s.moisture,0,mirror?1:0]);
   }
-  drawOpaque(encoder,color,depth,mirror=false,grass=true) {
+  drawOpaque(encoder,color,depth,mirror=false,grass=true,only=null) {
     const pass=encoder.beginRenderPass({label:mirror?'reflected island':'opaque island',colorAttachments:[{view:color.view,loadOp:'clear',storeOp:'store',clearValue:{r:.3,g:.45,b:.6,a:1}}],depthStencilAttachment:{view:depth.view,depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});
     pass.setBindGroup(1,this.safeImages);
     const prefix=mirror?'m:':'';
     pass.setPipeline(this.pipelines.sky);pass.setBindGroup(0,this.groups[prefix+'sky']);pass.draw(3);
-    for(const name of ['terrain','rocks','foliage']){pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[prefix+name]);pass.setIndexBuffer(this.geometry[name].buffer,'uint32');pass.drawIndexed(this.geometry[name].count);}
-    if(grass){for(let i=0;i<3;i++){pass.setPipeline(this.pipelines['grass'+i]);pass.setBindGroup(0,this.groups['grass'+i]);pass.drawIndirect(this.sim.commands.gpuBuffer,i*16);}
+    for(const name of ['terrain','rocks','foliage']){if(only&&only!==name)continue;pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[prefix+name]);pass.setIndexBuffer(this.geometry[name].buffer,'uint32');pass.drawIndexed(this.geometry[name].count);}
+    if(grass&&(!only||only==='grass')){for(let i=0;i<3;i++){pass.setPipeline(this.pipelines['grass'+i]);pass.setBindGroup(0,this.groups['grass'+i]);pass.drawIndirect(this.sim.commands.gpuBuffer,i*16);}
       pass.setPipeline(this.pipelines.seeds);pass.setBindGroup(0,this.groups.seeds);pass.drawIndirect(this.sim.commands.gpuBuffer,48);
       pass.setBindGroup(0,this.groups.grass0);pass.setPipeline(this.pipelines.distant);pass.draw(36,this.q.distant*this.q.distant);
       pass.setPipeline(this.pipelines.flowers);pass.draw(108,this.q.distant*this.q.distant);
     }
     pass.end();
   }
-  frame(camera,basis,now) {
+  frame(camera,basis,now,stage='all') {
     this.resize();const d=this.device,g=this.sim.grid,s=this.sim.settings;
     d.queue.writeBuffer(this.camera,0,this.cameraData(camera,basis));d.queue.writeBuffer(this.mirrorCamera,0,this.cameraData(camera,basis,true));
     const data=new ArrayBuffer(64),f=new Float32Array(data),u=new Uint32Array(data);
     f.set([g.x0,g.z0,g.dx,g.dz]);u.set([g.nx,g.nz,this.q.reflection?1:0,0],4);f.set([s.tide,s.strength,s.wind,this.exposure],8);f.set([this.width,this.height,0,0],12);d.queue.writeBuffer(this.island,0,data);d.queue.writeBuffer(this.postUniform,0,new Float32Array([this.exposure,0,0,0]));
     const encoder=d.createCommandEncoder({label:'RealIsland frame'});
-    if(now-this.lastWeather>.12){
+    if((stage==='all'&&now-this.lastWeather>.12)||stage==='weather'){
       for(const name of ['environment','light']){const pass=encoder.beginRenderPass({label:name,colorAttachments:[{view:this[name].view,loadOp:'clear',storeOp:'store',clearValue:{r:1,g:1,b:1,a:1}}]});pass.setPipeline(this.pipelines[name]);pass.setBindGroup(0,this.groups[name]);pass.setBindGroup(1,this.blankImages);pass.draw(3);pass.end();}
       this.lastWeather=now;
     }
-    if(this.q.reflection){this.drawOpaque(encoder,this.mirror,this.mirrorDepth,true,false);}
+    if(stage==='weather'){d.queue.submit([encoder.finish()]);return;}
+    if((stage==='all'||stage==='reflection')&&this.q.reflection){this.drawOpaque(encoder,this.mirror,this.mirrorDepth,true,false);}
     else if(this.lastMirror===-Infinity){const pass=encoder.beginRenderPass({colorAttachments:[{view:this.mirror.view,loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}],depthStencilAttachment:{view:this.mirrorDepth.view,depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});pass.end();}
     this.lastMirror=now;
-    this.drawOpaque(encoder,this.opaque,this.depth,false,true);
+    if(stage==='reflection'){d.queue.submit([encoder.finish()]);return;}
+    if(stage==='all'||stage==='opaque'||['sky','terrain','rocks','foliage','grass'].includes(stage))this.drawOpaque(encoder,this.opaque,this.depth,false,true,['sky','terrain','rocks','foliage','grass'].includes(stage)?stage:null);
+    if(!['all','water','post'].includes(stage)){d.queue.submit([encoder.finish()]);return;}
+    if(stage!=='post'){
     encoder.copyTextureToTexture({texture:this.opaque.texture},{texture:this.composite.texture},[this.width,this.height]);
     const water=encoder.beginRenderPass({label:'river, surf and far ocean',colorAttachments:[{view:this.composite.view,loadOp:'load',storeOp:'store'}],depthStencilAttachment:{view:this.depth.view,depthReadOnly:true}});
     water.setBindGroup(0,this.groups.terrain);water.setBindGroup(1,this.waterImages);water.setPipeline(this.pipelines.water);water.setIndexBuffer(this.geometry.terrain.buffer,'uint32');water.drawIndexed(this.geometry.terrain.count);
     water.setPipeline(this.pipelines.farWater);water.draw(4*32*32*6);
     water.setPipeline(this.pipelines.spray);water.setBindGroup(0,this.groups.spray);water.draw(6,SPRAY_COUNT);water.end();
+    }
+    if(stage==='water'){d.queue.submit([encoder.finish()]);return;}
     const post=encoder.beginRenderPass({label:'display',colorAttachments:[{view:this.context.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});post.setPipeline(this.pipelines.post);post.setBindGroup(0,this.postGroup);post.draw(3);post.end();
     d.queue.submit([encoder.finish()]);this.frameCount++;
   }
