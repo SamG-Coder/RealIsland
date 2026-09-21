@@ -1,0 +1,154 @@
+diff --git a/kernels/island.cu b/kernels/island.cu
+--- a/kernels/island.cu
++++ b/kernels/island.cu
+@@ -44,3 +44,3 @@
+   float x=x0+(float)(k%nx)*dx,z=z0+(float)(k/nx)*dz;
+-  float ground=riverGround(World,x,z),bed=riverBed(World,R,x,z);
++  float ground=riverGround(World,x,z),bed=ground;
+   S[k]=bed;S[n+k]=ground;
+@@ -50,6 +50,17 @@
+   }
++  float oceanU=0.0f,oceanV=0.0f;
++  if(level<.001f && ground<0.0f){
++    float wave=0.0f,fade=smooth(.02f,1.4f,-ground);
++    for(int b=0;b<4;b++){
++      float kappa=6.2831853f/(32.0f+(float)b*11.0f),angle=-.55f+(float)b*.34f;
++      float band=cosf(kappa*(cosf(angle)*x+sinf(angle)*z)+(float)b*2.399963f)*(.20f/(1.0f+(float)b*.6f))*fade;
++      wave+=band;float velocity=band*sqrtf(9.81f/fmaxf(.45f,-ground));
++      oceanU+=cosf(angle)*velocity;oceanV+=sinf(angle)*velocity;
++    }
++    level+=wave;
++  }
+   float h=fmaxf(0.0f,level-bed), tangent=(riverCenter(World,z+.25f)-riverCenter(World,z-.25f))/.5f;
+   S[2*n+k]=h;
+-  S[4*n+k]=h>.02f?current/sqrtf(1.0f+tangent*tangent):0.0f;
+-  S[3*n+k]=S[4*n+k]*tangent;
++  S[4*n+k]=h>.02f?current/sqrtf(1.0f+tangent*tangent)+oceanV:0.0f;
++  S[3*n+k]=(S[4*n+k]-oceanV)*tangent+oceanU;
+   S[7*n+k]=h>.002f?1.0f:0.0f;S[8*n+k]=fminf(1.0f,h*5.0f);
+@@ -107 +118,16 @@
+ }
++
++// A separate pass samples the cached ground once per cell. This keeps the
++// original rock silhouette/obstacle equation without inlining the whole island
++// generator into every iteration of a 105-rock loop.
++__global__ void applyIslandRocks(const float *World,const float *R,float *S,int nx,int nz,float x0,float z0,float dx,float dz,int start){
++ int k=start+blockIdx.x*blockDim.x+threadIdx.x,n=nx*nz;if(k>=n)return;
++ float x=x0+(float)(k%nx)*dx,z=z0+(float)(k/nx)*dz;
++ float ground=S[n+k],bed=ground,level=S[k]+S[2*n+k];
++ for(int r=0;r<105;r++){
++  int a=r*8;float radius=fmaxf(R[a+2],R[a+3])*1.4f;
++  if(fabsf(x-R[a])<radius&&fabsf(z-R[a+1])<radius)bed=fmaxf(bed,cachedRock(World,R,r,x,z,ground));
++ }
++ S[k]=bed;S[2*n+k]=fmaxf(0.0f,level-bed);
++ if(S[2*n+k]<.002f){S[3*n+k]=0.0f;S[4*n+k]=0.0f;S[7*n+k]=0.0f;S[8*n+k]=0.0f;}
++}
+ diff --git a/scripts/build-kernels.mjs b/scripts/build-kernels.mjs
+--- a/scripts/build-kernels.mjs
++++ b/scripts/build-kernels.mjs
+@@ -11,3 +11,3 @@
+ await writeFile(new URL('generated/meadow-linked.cu',root),grassSource);
+-const hydro=['initializeRocks','initializeIsland','islandTerrain','advectMomentum','faces','limits','limitFlux','integrate','islandBoundary','transport','commitTransport','riverFoam','reconstruct','reconstructRiver','surfaceDetail','rockVertices','treeInstances','foliageVertices','rockWetness','waterfallSpray','initializeClosedTest'];
++const hydro=['initializeRocks','initializeIsland','applyIslandRocks','islandTerrain','advectMomentum','faces','limits','limitFlux','integrate','islandBoundary','transport','commitTransport','riverFoam','reconstruct','reconstructRiver','surfaceDetail','rockVertices','treeInstances','foliageVertices','rockWetness','waterfallSpray','initializeClosedTest'];
+ const meadow=['grow','simulate','selectGrass','clearDraws'];
+diff --git a/src/main.js b/src/main.js
+--- a/src/main.js
++++ b/src/main.js
+@@ -44,3 +44,3 @@
+  sim=await IslandSimulation.create(qualityFor(quality),seed,progress,fail);renderer=await IslandRenderer.create($('view'),sim,progress);
+- Object.assign(api,{sim,renderer,camera:controls.camera,cameraBasis,goto,diagnostics,togglePause,get paused(){return paused;}});wire();
++ Object.assign(api,{sim,renderer,camera:controls.camera,cameraBasis,goto,diagnostics,togglePause});Object.defineProperty(api,'paused',{get:()=>paused});wire();
+  $('loading').hidden=true;api.ready=true;requestAnimationFrame(frame);
+diff --git a/src/renderer.js b/src/renderer.js
+--- a/src/renderer.js
++++ b/src/renderer.js
+@@ -12,2 +12,7 @@
+ }
++export function makeQuadIndices(count) {
++  const out=new Uint32Array(count*6);
++  for(let i=0;i<count;i++)out.set([i*4,i*4+1,i*4+2,i*4,i*4+2,i*4+3],i*6);
++  return out;
++}
+ export class IslandRenderer {
+@@ -51,3 +56,3 @@
+     progress('Generating original meadow materials',.61);this.materials=await createSeededMaterials(d,this.sim.seed);await d.queue.onSubmittedWorkDone();
+-    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT)),foliage:this.uploadIndices('branch topology',makeGridIndices(2,2,TREE_COUNT*96))};
++    this.geometry={terrain:this.uploadIndices('terrain grid',makeGridIndices(this.sim.grid.nx,this.sim.grid.nz)),rocks:this.uploadIndices('rock topology',makeGridIndices(65,25,ROCK_COUNT)),foliage:this.uploadIndices('branch topology',makeQuadIndices(TREE_COUNT*96))};
+     const alpha={color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}};
+diff --git a/src/scene-shaders.js b/src/scene-shaders.js
+--- a/src/scene-shaders.js
++++ b/src/scene-shaders.js
+@@ -99,3 +99,3 @@
+  let weights=pow(abs(n),vec3f(4.));let w=weights/max(dot(weights,vec3f(1.)),.001);
+- let macro=fbm(p.yz*.034)*w.x+fbm(p.xz*.034)*w.y+fbm(p.xy*.034)*w.z;
++ let largeScale=fbm(p.yz*.034)*w.x+fbm(p.xz*.034)*w.y+fbm(p.xy*.034)*w.z;
+  let mid=fbm(p.yz*.41)*w.x+fbm(p.xz*.41)*w.y+fbm(p.xy*.41)*w.z;
+@@ -104,3 +104,3 @@
+  let vein=(1.-smoothstep(.014,.035,abs(sin(dot(p,vec3f(.93,.70,-.52))+mid*.56))))*.065;
+- return mix(vec3f(.19,.215,.205),vec3f(.49,.44,.35),macro)*mix(.68,1.25,mid)*mix(.87,1.1,grain)*(1.-cracks*.14)+vec3f(.65,.60,.47)*vein;
++ return mix(vec3f(.19,.215,.205),vec3f(.49,.44,.35),largeScale)*mix(.68,1.25,mid)*mix(.87,1.1,grain)*(1.-cracks*.14)+vec3f(.65,.60,.47)*vein;
+ }
+diff --git a/src/simulation.js b/src/simulation.js
+--- a/src/simulation.js
++++ b/src/simulation.js
+@@ -48,3 +48,3 @@
+     const add=(entry,count,extra={},split=false)=>{for(let start=0;start<count;start+=split?4096:count)jobs.push({entry,count:Math.min(split?4096:count,count-start),extra:{...extra,...(split?{start}: {})}});};
+-    add('initializeRocks',ROCK_COUNT,{count:ROCK_COUNT});add('initializeIsland',this.n,{},true);
++    add('initializeIsland',this.n,{},true);add('initializeRocks',ROCK_COUNT,{count:ROCK_COUNT});add('applyIslandRocks',this.n,{},true);
+     add('islandTerrain',this.n,{},true);add('rockWetness',ROCK_COUNT,{reset:1});
+diff --git a/src/source-assembly.js b/src/source-assembly.js
+--- a/src/source-assembly.js
++++ b/src/source-assembly.js
+@@ -71,3 +71,28 @@
+  float advancingEdge=front*smooth(.15f,.95f,towardShore)*(obstacle?.08f:1.0f);`);
+-  const source = [hydro,linked,valley,shore,islandHelpers,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed','rockVertices'].map(take),clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
++  // The equations remain upstream's, but static terrain is sampled from its
++  // GPU cache. This avoids nested shader inlining and redundant rock/tree work.
++  const cacheArgs='const float *S, int nx, int nz, float x0, float z0, float dx, float dz';
++  const cacheCall='S,nx,nz,x0,z0,dx,dz';
++  const terrainCache=`__device__ float cachedField(const float *S,int nx,int nz,float x0,float z0,float dx,float dz,float x,float z,int layer){
++    float gx=cap((x-x0)/dx,0.0f,(float)nx-1.001f),gz=cap((z-z0)/dz,0.0f,(float)nz-1.001f);
++    int i=(int)gx,j=(int)gz;float fx=gx-(float)i,fz=gz-(float)j;
++    return adv(S+layer*nx*nz,j*nx+i,nx,1.0f-fx,fx,1.0f-fz,fz);
++  }`;
++  let cachedRock=take('riverRock').replace('float riverRock(', 'float cachedRock(');
++  cachedRock=replaceOnce(cachedRock,'float z) {','float z, float ground) {');
++  cachedRock=cachedRock.replaceAll('riverGround(World, x, z)','ground');
++  cachedRock=replaceOnce(cachedRock,'float ground = ground,\n        rock =','float rock =');
++  rocks=replaceOnce(rocks,'int count) {',`${cacheArgs}, int count) {`);
++  rocks=rocks.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
++  let rockGeometry=take('rockVertices');
++  rockGeometry=replaceOnce(rockGeometry,'int count, int start)',`${cacheArgs}, int count, int start)`);
++  rockGeometry=rockGeometry.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
++  rockGeometry=rockGeometry.replace(/riverRock\(World, R, r, ([^,]+), ([^)]+)\)/g,(_,x,z)=>`cachedRock(World,R,r,${x},${z},cachedField(${cacheCall},${x},${z},1))`);
++  clearance=replaceOnce(clearance,'float z) {',`float z, ${cacheArgs}) {`);
++  clearance=clearance.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
++  clearance=clearance.replaceAll('riverBed(World, R, x, z)',`cachedField(${cacheCall},x,z,0)`);
++  trees=replaceOnce(trees,'int count)',`${cacheArgs}, int count)`);
++  trees=trees.replaceAll('plantClearance(World, R, x, z)',`plantClearance(World,R,x,z,${cacheCall})`);
++  trees=trees.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
++  const source = [hydro,linked,valley,shore,islandHelpers,terrainCache,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed'].map(take),cachedRock,rockGeometry,clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
+   let meadow=grass.replace('// PLANT_MODEL',plant);
+@@ -88,2 +113,6 @@
+   meadow=replaceOnce(meadow,'sqrtf(x*x+z*z+eyeY*eyeY)', 'sqrtf(x*x+z*z+(r.y-eyeY)*(r.y-eyeY))');
++  meadow=replaceOnce(meadow,'unsigned int inspect) {','unsigned int inspect, const float *S, int nx, int nz, float x0, float z0, float dx, float dz) {');
++  meadow=replaceOnce(meadow,'if (distance>46.0f || depth < -3.5f) return;',`if (distance>46.0f || depth < -3.5f) return;
++        int gi=(int)cap((r.x-x0)/dx,0.0f,(float)nx-1.0f),gj=(int)cap((r.z-z0)/dz,0.0f,(float)nz-1.0f),gk=gj*nx+gi,gn=nx*nz;
++        if(S[2*gn+gk]>.025f && r.y<S[gk]+S[2*gn+gk]-.02f)return;`);
+   const grassSource=[cudaFunction(hydro,'cap'),cudaFunction(hydro,'adv'),meadow].join('\n');
+diff --git a/tests/integration.test.mjs b/tests/integration.test.mjs
+--- a/tests/integration.test.mjs
++++ b/tests/integration.test.mjs
+@@ -4,3 +4,3 @@
+ import {assembleSources,replaceOnce} from '../src/source-assembly.js';
+-import {makeGridIndices} from '../src/renderer.js';
++import {makeGridIndices,makeQuadIndices} from '../src/renderer.js';
+ import {gridFor,QUALITY} from '../src/quality.js';
+@@ -16,3 +16,6 @@
+ test('static grid topology is in bounds for all copies',()=>{const a=makeGridIndices(5,7,3);assert.equal(a.length,4*6*6*3);assert.equal(Math.max(...a),5*7*3-1);assert.ok(a.every(v=>v>=0&&v<105));});
+-test('all 25 precompiled CUDA entry points retain WGSL metadata',async()=>{const artifacts=JSON.parse(await text('generated/kernels.json'));assert.equal(Object.keys(artifacts).length,25);for(const a of Object.values(artifacts)){assert.ok(a.wgsl.includes('@compute'));assert.ok(a.metadata.bindings.length<=8);assert.equal(a.metadata.workgroupSize[1],1);}});
++test('all 26 precompiled CUDA entry points retain WGSL metadata',async()=>{const artifacts=JSON.parse(await text('generated/kernels.json'));assert.equal(Object.keys(artifacts).length,26);for(const a of Object.values(artifacts)){assert.ok(a.wgsl.includes('@compute'));assert.ok(a.metadata.bindings.length<=8);assert.equal(a.metadata.workgroupSize[1],1);}});
+ test('browser assets do not require external CDNs or native CUDA',async()=>{const main=await text('src/main.js'),html=await text('index.html');assert.doesNotMatch(main+html,/https?:\/\/|unpkg|jsdelivr|three\.js/);assert.match(html,/src="\.\/src\/main.js"/);});
++
++test('branch-card indices cover both halves without a crossed diagonal',()=>{assert.deepEqual(Array.from(makeQuadIndices(2)),[0,1,2,0,2,3,4,5,6,4,6,7]);});
++test('static rock and tree kernels use the shared terrain cache',()=>{assert.match(assembly.source,/void applyIslandRocks/);assert.match(assembly.source,/float cachedRock/);assert.match(assembly.source,/float cachedField/);});
