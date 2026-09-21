@@ -117,17 +117,18 @@ __global__ void initializeClosedTest(float *S,int nx,int nz,float dx,float dz,in
   S[9*n+k]=x;S[10*n+k]=z;
 }
 
-// A separate pass samples the cached ground once per cell. This keeps the
-// original rock silhouette/obstacle equation without inlining the whole island
-// generator into every iteration of a 105-rock loop.
-__global__ void applyIslandRocks(const float *World,const float *R,float *S,int nx,int nz,float x0,float z0,float dx,float dz,int start){
- int k=start+blockIdx.x*blockDim.x+threadIdx.x,n=nx*nz;if(k>=n)return;
- float x=x0+(float)(k%nx)*dx,z=z0+(float)(k/nx)*dz;
- float ground=S[n+k],bed=ground,level=S[k]+S[2*n+k];
- for(int r=0;r<105;r++){
-  int a=r*8;float radius=fmaxf(R[a+2],R[a+3])*1.4f;
-  if(fabsf(x-R[a])<radius&&fabsf(z-R[a+1])<radius)bed=fmaxf(bed,cachedRock(World,R,r,x,z,ground));
- }
- S[k]=bed;S[2*n+k]=fmaxf(0.0f,level-bed);
- if(S[2*n+k]<.002f){S[3*n+k]=0.0f;S[4*n+k]=0.0f;S[7*n+k]=0.0f;S[8*n+k]=0.0f;}
+// One bounded patch per rock. Ordered GPU dispatches preserve overlapping
+// obstacle maxima without atomic floats or a per-cell all-rock traversal.
+__global__ void applyIslandRocks(const float *World,const float *R,float *S,int nx,int nz,float x0,float z0,float dx,float dz,int rockIndex){
+ int k=blockIdx.x*blockDim.x+threadIdx.x,n=nx*nz,a=rockIndex*8;
+ float radius=fmaxf(R[a+2],R[a+3])*1.4f;
+ int ix=max(0,(int)floorf((R[a]-radius-x0)/dx)),iz=max(0,(int)floorf((R[a+1]-radius-z0)/dz));
+ int ex=min(nx-1,(int)ceilf((R[a]+radius-x0)/dx)),ez=min(nz-1,(int)ceilf((R[a+1]+radius-z0)/dz));
+ int cols=ex-ix+1,rows=ez-iz+1;if(cols<1||rows<1||k>=cols*rows)return;
+ int i=ix+k%cols,j=iz+k/cols,q=j*nx+i;
+ float x=x0+(float)i*dx,z=z0+(float)j*dz;
+ float ground=S[n+q],level=S[q]+S[2*n+q];
+ float bed=fmaxf(S[q],cachedRock(World,R,rockIndex,x,z,ground));
+ S[q]=bed;S[2*n+q]=fmaxf(0.0f,level-bed);
+ if(S[2*n+q]<.002f){S[3*n+q]=0.0f;S[4*n+q]=0.0f;S[7*n+q]=0.0f;S[8*n+q]=0.0f;}
 }

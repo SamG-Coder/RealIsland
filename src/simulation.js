@@ -34,7 +34,7 @@ export class IslandSimulation {
     buffer('visible',this.count*16);buffer('commands',64,GPUBufferUsage.INDIRECT);
     this.lastControls='';this.growthKey='';this.nearGrass=true;
   }
-  values(extra={}) {return {...this.grid,n:this.count,start:0,count:this.n,dt:1/120,enhanced:1,time:this.time,flow:this.settings.flow,closed:0,seed:this.seed,reset:0,season:this.settings.season,water:this.settings.moisture,...extra};}
+  values(extra={}) {return {...this.grid,n:this.count,start:0,count:this.n,rockIndex:0,dt:1/120,enhanced:1,time:this.time,flow:this.settings.flow,closed:0,seed:this.seed,reset:0,season:this.settings.season,water:this.settings.moisture,...extra};}
   dispatch(batch,name,extra={},count=this.n) {
     const kernel=this.kernels[name], values=this.values(extra);
     const scalars=Object.fromEntries(kernel.artifact.metadata.scalars.map(s=>[s.name,values[s.name]]));
@@ -46,7 +46,7 @@ export class IslandSimulation {
   async initialize(progress) {
     const jobs=[];
     const add=(entry,count,extra={},split=false)=>{for(let start=0;start<count;start+=split?4096:count)jobs.push({entry,count:Math.min(split?4096:count,count-start),extra:{...extra,...(split?{start}: {})}});};
-    add('initializeIsland',this.n,{},true);add('initializeRocks',ROCK_COUNT,{count:ROCK_COUNT});add('applyIslandRocks',this.n,{},true);
+    add('initializeIsland',this.n,{},true);add('initializeRocks',ROCK_COUNT,{count:ROCK_COUNT});for(let rockIndex=0;rockIndex<ROCK_COUNT;rockIndex++)add('applyIslandRocks',4096,{rockIndex});
     add('islandTerrain',this.n,{},true);add('rockWetness',ROCK_COUNT,{reset:1});
     add('rockVertices',ROCK_COUNT*65*25,{count:ROCK_COUNT*65*25},true);
     add('treeInstances',TREE_COUNT,{count:TREE_COUNT});add('foliageVertices',TREE_COUNT*96*4,{count:TREE_COUNT*96*4},true);

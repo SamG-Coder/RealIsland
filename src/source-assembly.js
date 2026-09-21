@@ -94,7 +94,13 @@ export function assembleSources({coast, coastRender, river, impacts, grass, plan
   trees=replaceOnce(trees,'int count)',`${cacheArgs}, int count)`);
   trees=trees.replaceAll('plantClearance(World, R, x, z)',`plantClearance(World,R,x,z,${cacheCall})`);
   trees=trees.replaceAll('riverGround(World, x, z)',`cachedField(${cacheCall},x,z,1)`);
-  const source = [hydro,linked,valley,shore,islandHelpers,terrainCache,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed'].map(take),cachedRock,rockGeometry,clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
+  let source = [hydro,linked,valley,shore,islandHelpers,terrainCache,rocks,...['rockType','rockExponent','rockEdge','riverRock','riverBed'].map(take),cachedRock,rockGeometry,clearance,trees,take('foliageVertices'),foam,wet,cudaFunction(coastRender,'reconstruct'),reconstruction,cudaFunction(coastRender,'surfaceDetail'),spray,islandKernels].join('\n\n');
+  // All scenery powers have nonnegative bases. Avoid the compiler's generic
+  // powf integer-exponent path, which otherwise pulls software binary64 loops
+  // into float-only scene generation and can explode driver compilation time.
+  // This is normal single-precision exp2/log2 scene math, not a solver change.
+  const positivePower='__device__ float scenePow(float base,float exponent){if(base<=0.0f)return exponent==0.0f?1.0f:0.0f;return exp2f(log2f(base)*exponent); }';
+  source=positivePower+'\n'+source.replaceAll('powf(', 'scenePow(');
   let meadow=grass.replace('// PLANT_MODEL',plant);
   meadow=replaceOnce(meadow,'unsigned int reset, float season, float water)', 'unsigned int reset, float season, float water, const float *S, int nx, int nz, float x0, float z0, float dx, float dz)');
   meadow=replaceOnce(meadow,'        roots[i] = plant.root;', `        float px=plant.root.x, pz=plant.root.z;

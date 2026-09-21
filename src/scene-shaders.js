@@ -1,3 +1,4 @@
+import {visualMath} from './visual-math.js';
 import {common as meadowCommon,grass,distantGrass,distantFlowers} from '../vendor/realgrass/src/shaders.js';
 
 // Original plant/weather functions remain in the source. The flat-world camera
@@ -45,8 +46,8 @@ fn aerial(c:vec3f,p:vec3f)->vec3f {
 // volumetric samples per grass fragment. The generating pass still uses the
 // original cloudSunlight/weatherDensity functions.
 function adaptCommon(source){
- return source.replace('const SUN = vec3f(-0.48,0.71,-0.51);','const SUN = vec3f(-0.480096,0.710142,-0.510102);')
-   .replace('let sunlight=cloudSunlight(p);','let sunlight=lightAt(p);') + islandBindings;
+ return visualMath(source.replace('const SUN = vec3f(-0.48,0.71,-0.51);','const SUN = vec3f(-0.480096,0.710142,-0.510102);')
+   .replace('let sunlight=cloudSunlight(p);','let sunlight=lightAt(p);')) + islandBindings;
 }
 export const common=adaptCommon(meadowCommon);
 const fullscreen=/* wgsl */`

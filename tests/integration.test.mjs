@@ -19,3 +19,5 @@ test('browser assets do not require external CDNs or native CUDA',async()=>{cons
 
 test('branch-card indices cover both halves without a crossed diagonal',()=>{assert.deepEqual(Array.from(makeQuadIndices(2)),[0,1,2,0,2,3,4,5,6,4,6,7]);});
 test('static rock and tree kernels use the shared terrain cache',()=>{assert.match(assembly.source,/void applyIslandRocks/);assert.match(assembly.source,/float cachedRock/);assert.match(assembly.source,/float cachedField/);});
+
+test('finite-volume passes retain the original compensated arithmetic',async()=>{const a=JSON.parse(await text('generated/kernels.json'));for(const entry of ['faces','integrate','transport','advectMomentum'])assert.match(a[entry].wgsl,/residual/);assert.doesNotMatch(a.simulate.wgsl,/residual/);assert.doesNotMatch(a.initializeIsland.wgsl,/cw_f64/);});
