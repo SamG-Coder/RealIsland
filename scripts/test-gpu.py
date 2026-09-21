@@ -11,7 +11,7 @@ URL=os.environ.get('TEST_URL','http://127.0.0.1:5173/')
 QUALITY=os.environ.get('TEST_QUALITY','test')
 logs=[];result={'testEnvironment':'headless Chromium / SwiftShader','quality':QUALITY,'errors':[]}
 with sync_playwright() as p:
-    options={'headless':True,'args':['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-webgpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
+    options={'headless':True,'args':['--no-sandbox','--disable-gpu-watchdog','--disable-dev-shm-usage','--enable-unsafe-webgpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}
     if os.environ.get('CHROMIUM_PATH'): options['executable_path']=os.environ['CHROMIUM_PATH']
     browser=p.chromium.launch(**options)
     page=browser.new_page(viewport={'width':960,'height':640})
@@ -20,12 +20,19 @@ with sync_playwright() as p:
     page.on('console',lambda m:log(m.type+': '+m.text))
     page.on('pageerror',lambda e:log('PAGEERROR: '+str(e)))
     try:
-        page.goto(URL+'?quality='+QUALITY,wait_until='domcontentloaded',timeout=60000)
+        page.goto(URL+'?quality='+QUALITY+'&manual=1',wait_until='domcontentloaded',timeout=60000)
         page.wait_for_function('window.realIsland?.ready || window.realIsland?.errors.length',timeout=240000)
         status=page.evaluate('({ready:realIsland.ready,errors:realIsland.errors,log:realIsland.log})')
         if not status['ready'] or status['errors']: raise RuntimeError(json.dumps(status))
-        page.wait_for_function('realIsland.renderer.frameCount>=3 || realIsland.errors.length',timeout=240000)
+        log('Pipelines ready. Inspecting initialized compute state before rendering.')
         page.evaluate('realIsland.stop()');page.evaluate('realIsland.sim.runtime.idle()')
+        result['beforeRendering']=page.evaluate('realIsland.sim.diagnostics()')
+        log('Initialized state: '+json.dumps(result['beforeRendering']))
+        log('Executing the first grass/water compute frame.')
+        page.evaluate('''async()=>{const a=realIsland,b=a.cameraBasis(a.camera);a.sim.frame(1/60,false,a.camera,b,a.renderer.width/a.renderer.height);await a.sim.runtime.idle();}''')
+        log('Compute completed. Executing the first render frame.')
+        page.evaluate('''async()=>{const a=realIsland,b=a.cameraBasis(a.camera);a.renderer.frame(a.camera,b,0);await a.sim.runtime.idle();}''')
+        log('First render completed.')
         page.screenshot(path=str(OUT/'island.png'),timeout=60000)
         # Freeze and manually render known frames so test readback never races drawing.
         result['initial']=page.evaluate('realIsland.sim.diagnostics()')

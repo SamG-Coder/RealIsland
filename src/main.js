@@ -5,7 +5,7 @@ import {createCamera,cameraBasis,VIEWS,pointCamera} from './camera.js';
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.search);
 const quality=params.get('quality')||localStorage.getItem('realisland-quality')||((matchMedia('(pointer:coarse)').matches)?'low':'balanced');
 const seed=Math.max(0,Math.min(99999999,Number(params.get('seed')||1741)))>>>0;
-const errors=[],log=[];let sim,renderer,paused=false,busy=false,last=0,stopped=false,previousCompletion=0,frames=[],lastHud=0;
+const errors=[],log=[];let sim,renderer,paused=false,busy=false,last=0,stopped=params.has('manual'),previousCompletion=0,frames=[],lastHud=0;
 const api=window.realIsland={ready:false,errors,log,quality,seed,stop(){stopped=true;},resume(){stopped=false;last=0;requestAnimationFrame(frame);}};
 function progress(message,value){$('stage').textContent=message;$('progress').style.width=`${Math.min(value,1)*100}%`;$('percent').textContent=`${Math.round(Math.min(value,1)*100)}%`;log.push(message);$('load-log').textContent=log.slice(-8).map((x,i)=>`${i===7?'›':'✓'} ${x}`).join('\n');console.info('[RealIsland]',message);}
 function fail(error){const message=error?.message||String(error);if(errors.includes(message))return;errors.push(message);console.error(error);stopped=true;$('loading').hidden=false;$('loading').classList.add('failed');$('stage').textContent='Startup / GPU error';$('load-log').textContent=message+'\n\nOpen the browser console for details. No substitute renderer is used.';}

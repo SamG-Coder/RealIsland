@@ -19,7 +19,7 @@ export function cudaFunction(source, name) {
 export function assembleSources({coast, coastRender, river, impacts, grass, plant, island}) {
   const take = name => cudaFunction(river,name);
   const helpers = ['worldHash','randomRiver','boundaryRandom','riverCenter','riverWidth','forkAmount','forkSide','branchCenter','channelDistance','ledgeStart','ledgeWidth','ledgeHeight','riverDatum','riverLevel','terrainNoise'].map(take).join('\n');
-  let linked = helpers.replaceAll('World[1] + z / 110.0f','World[1] + (z + 150.0f) / 330.0f');
+  let linked = helpers.replaceAll('World[1] + z / 110.0f','World[1] + (z + 150.0f) / 110.0f');
   linked = replaceOnce(linked,'return base + randomRiver(World, 901 + tier) * 9.0f +\n         2.0f * sinf(x * .19f + randomRiver(World, 941 + tier) * 6.28f);',
     'return -150.0f + 3.0f * (base + randomRiver(World, 901 + tier) * 9.0f +\n         2.0f * sinf(x * .19f + randomRiver(World, 941 + tier) * 6.28f));');
   linked = replaceOnce(linked,'return 3.0f + randomRiver(World, 951 + tier) * 4.0f +\n         .65f * sinf(x * .25f + (float)tier);',
