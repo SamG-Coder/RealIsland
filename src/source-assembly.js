@@ -143,6 +143,9 @@ export function assembleSources({coast, coastRender, river, impacts, grass, plan
   const positivePower='__device__ float scenePow(float base,float exponent){if(base<=0.0f)return exponent==0.0f?1.0f:0.0f;return exp2f(log2f(base)*exponent); }';
   source=positivePower+'\n'+source.replaceAll('powf(', 'scenePow(');
   let meadow=grass.replace('// PLANT_MODEL',plant);
+  meadow=replaceOnce(meadow,'float brushX, float brushZ, float brushForce,','float brushX, float brushZ, float brushY, float brushForce,');
+  meadow=replaceOnce(meadow,'float touch = fmaxf(0.0f, 1.0f - distance / 2.8f) * brushForce * 32.0f;',
+   'float overlap=cap((r.y+s.x-brushY)*4.0f,0.0f,1.0f)*cap((brushY+1.8f-r.y)*4.0f,0.0f,1.0f); float touch=fmaxf(0.0f,1.0f-distance/1.1f)*brushForce*48.0f*overlap;');
   meadow=replaceOnce(meadow,'unsigned int reset, float season, float water)', 'unsigned int reset, float season, float water, const float *S, int nx, int nz, float x0, float z0, float dx, float dz)');
   meadow=replaceOnce(meadow,'        roots[i] = plant.root;', `        float px=plant.root.x, pz=plant.root.z;
         float gx=(px-x0)/dx, gz=(pz-z0)/dz;

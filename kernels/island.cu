@@ -293,3 +293,23 @@ __global__ void forestVertices(const float *World,const float *Trees,float *Foli
  Foliage[k*8]=x;Foliage[k*8+1]=y;Foliage[k*8+2]=z;Foliage[k*8+3]=material;
  Foliage[k*8+4]=nx;Foliage[k*8+5]=ny;Foliage[k*8+6]=nz;Foliage[k*8+7]=f;
 }
+
+
+// A moving body applies bounded face-velocity impulses to a 3 m local footprint.
+// No depth is added: the original conservative solver transports displaced water.
+__global__ void playerWater(float *S,int nx,int nz,float x0,float z0,float dx,float dz,
+ float playerX,float playerY,float playerZ,float playerVX,float playerVZ,float playerSpeed,float dt) {
+ int lane=blockIdx.x*blockDim.x+threadIdx.x;if(lane>=121||playerSpeed<.05f)return;
+ int i=(int)floorf((playerX-x0)/dx)+(lane%11)-5;
+ int j=(int)floorf((playerZ-z0)/dz)+(lane/11)-5;
+ if(i<1||j<1||i>=nx-2||j>=nz-2)return;
+ int n=nx*nz,k=j*nx+i;float h=S[2*n+k],eta=S[k]+h;
+ if(h<.025f||playerY>eta+.12f||playerY+1.8f<eta)return;
+ float x=x0+(float)i*dx-playerX,z=z0+(float)j*dz-playerZ;
+ float r=sqrtf(x*x+z*z+.01f),weight=fmaxf(0.0f,1.0f-r/1.35f);
+ float contact=cap((eta-playerY)*4.0f,0.0f,1.0f);
+ float force=weight*weight*contact*fminf(playerSpeed,5.4f)*dt;
+ if(S[2*n+k+1]>.025f)S[3*n+k]+=force*(x/r*3.2f+playerVX*.6f);
+ if(S[2*n+k+nx]>.025f)S[4*n+k]+=force*(z/r*3.2f+playerVZ*.6f);
+ S[5*n+k]=fminf(1.0f,S[5*n+k]+force*.16f);
+}

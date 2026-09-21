@@ -39,7 +39,7 @@ export class SurvivalGame {
   this.wire();this.show('title');
  }
  message(text){$('game-menu-message').textContent=text;$('game-toast').textContent=text;$('game-toast').hidden=false;clearTimeout(this.toastTimer);this.toastTimer=setTimeout(()=>$('game-toast').hidden=true,4000);}
- show(phase){this.phase=phase;if(phase!=='playing'&&document.pointerLockElement)document.exitPointerLock();this.keys.clear();this.jumpQueued=false;this.dragging=false;this.accumulator=0;
+ show(phase){this.phase=phase;this.sim.playerInteraction=null;if(phase!=='playing'&&document.pointerLockElement)document.exitPointerLock();this.keys.clear();this.jumpQueued=false;this.dragging=false;this.accumulator=0;
   $('game-menu').hidden=phase==='playing';$('game-hud').hidden=phase!=='playing';
   for(const [id,p] of [['game-main-actions','title'],['game-pause-actions','paused'],['game-settings-panel','settings'],['game-inventory','inventory'],['game-confirm','confirm'],['game-death','dead']])$(id).hidden=p!==phase;
   $('game-subtitle').textContent=phase==='title'?'Find your footing. Stay supplied. Make this island home.':phase==='paused'?'Journey paused':phase==='settings'?'Make yourself comfortable':phase==='inventory'?'A few essentials for the journey.':'Stay supplied. Watch your footing.';
@@ -86,9 +86,12 @@ export class SurvivalGame {
   if(this.phase!=='playing')return cameraBasis(this.camera);
   this.world.tide=this.sim.settings.tide;this.accumulator+=Math.min(dt,.1);
   const forward=Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'))-Number(this.keys.has('KeyS')||this.keys.has('ArrowDown')),side=Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft'));
-  while(this.accumulator>=1/60){this.motion=stepPlayer(this.state,this.world,{x:Math.sin(this.yaw)*forward+Math.cos(this.yaw)*side,z:-Math.cos(this.yaw)*forward+Math.sin(this.yaw)*side,sprint:this.keys.has('ShiftLeft')||this.keys.has('ShiftRight'),jump:this.jumpQueued},1/60);this.jumpQueued=false;this.accumulator-=1/60;}
+  const before={x:this.state.player.x,z:this.state.player.z};let advanced=0;
+  while(this.accumulator>=1/60){this.motion=stepPlayer(this.state,this.world,{x:Math.sin(this.yaw)*forward+Math.cos(this.yaw)*side,z:-Math.cos(this.yaw)*forward+Math.sin(this.yaw)*side,sprint:this.keys.has('ShiftLeft')||this.keys.has('ShiftRight'),jump:this.jumpQueued},1/60);this.jumpQueued=false;this.accumulator-=1/60;advanced+=1/60;}
   if(this.state.player.health<=0){this.show('dead');this.save();}
   if(this.state.elapsed-this.lastSave>30){this.lastSave=this.state.elapsed;this.save();}
+  const p=this.state.player,vx=advanced?(p.x-before.x)/advanced:0,vz=advanced?(p.z-before.z)/advanced:0;
+  this.sim.playerInteraction=this.phase==='playing'?{playerX:p.x,playerY:p.y,playerZ:p.z,playerVX:vx,playerVZ:vz,playerSpeed:Math.min(5.4,Math.hypot(vx,vz))}:null;
   this.follow(dt);this.updateActors();if(!this.hudAt||this.state.elapsed-this.hudAt>.1){this.updateHUD();this.hudAt=this.state.elapsed;}return cameraBasis(this.camera);
  }
  follow(dt){const p=this.state.player;

@@ -42,3 +42,24 @@ eye height, absence of a player mesh, pause, save/reload, gathering and eating.
 
 Berry bushes are prototype geometry. Crafting, shelter, tools, combat, audio,
 touch controls and a longer progression loop are not implemented in this slice.
+
+
+## Player contact with the environment
+
+Nearby grass uses RealGrass's existing damped spring and persistent bend state.
+A 1.1 metre radial contact area is filtered by the player's foot height, so plants
+above or below the body are unaffected. Grass remains displaced while occupied
+and recovers when the player leaves; wind continues to act.
+
+Actual horizontal movement drives a small velocity impulse in the 0.3 metre
+water tile. The existing conservative flow solver turns this into ripples and
+a wake. Contact checks use live GPU water depth and player height. Standing
+still, airborne movement and dry ground produce no water impulse. There is
+a small foam contribution, but no new splash-particle or footstep-audio system.
+
+This adds one 128-thread water dispatch while moving and reuses the existing
+grass update. It adds no meshes, per-frame terrain readbacks or fluid grids.
+Pausing and leaving gameplay clear player contact. Hardware validation:
+`python scripts/test-player-interaction.py` checks grass recovery and locality,
+water volume, propagated surface displacement, dry/air/stationary rejection,
+and first-person contact screenshots.

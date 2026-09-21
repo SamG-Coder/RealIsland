@@ -104,12 +104,14 @@ export class IslandSimulation {
   frame(dt,paused,camera,basis,aspect) {
     this.syncControls();const batch=this.runtime.batch();
     this.coast.follow(batch,camera,basis);
+    const player=this.playerInteraction;
+    if(!paused&&player?.playerSpeed>.05)this.coast.dispatch(batch,'playerWater',{...player,dt:Math.min(dt,1/30)},121);
     if(!paused){this.debt+=Math.min(dt,.06);let s=0;while(this.debt>=1/120&&s<this.quality.maxSteps){this.step(batch);this.debt-=1/120;s++;}
       if(this.debt>1/30){this.droppedTime+=this.debt-1/30;this.debt=1/30;}this.publish(batch);}
     const originX=Math.floor(camera.x/6)-8,originZ=Math.floor(camera.z/6)-8;
     const key=`${originX},${originZ},${this.settings.season},${this.settings.moisture}`;
     if(key!==this.growthKey){this.dispatch(batch,'grow',{originX,originZ,reset:this.growthKey.split(',').slice(2).join(',')!==key.split(',').slice(2).join(',')?1:0},this.count);this.growthKey=key;}
-    if(!paused)this.dispatch(batch,'simulate',{dt:Math.min(dt,1/30),wind:this.settings.wind,stiffness:.65,brushX:camera.x,brushZ:camera.z,brushForce:0,eyeX:camera.x,eyeZ:camera.z,clouds:this.settings.clouds},this.count);
+    if(!paused)this.dispatch(batch,'simulate',{dt:Math.min(dt,1/30),wind:this.settings.wind,stiffness:.65,brushX:player?.playerX??camera.x,brushZ:player?.playerZ??camera.z,brushY:player?.playerY??-1000,brushForce:player?1:0,eyeX:camera.x,eyeZ:camera.z,clouds:this.settings.clouds},this.count);
     this.dispatch(batch,'clearDraws',{},16);
     this.dispatch(batch,'selectGrass',{eyeX:camera.x,eyeY:camera.y,eyeZ:camera.z,fx:basis.forward[0],fy:basis.forward[1],fz:basis.forward[2],rx:basis.right[0],rz:basis.right[2],ux:basis.up[0],uy:basis.up[1],uz:basis.up[2],aspect,height:1,inspect:0},this.count);
     batch.submit();
