@@ -89,6 +89,29 @@ npm start
 
 Open http://localhost:5180/?quality=high&seed=1741 for High quality.
 
+## Native Vulkan + CUDA viewer (Windows)
+
+The `native-vulkan-cuda` branch also contains a native Windows viewer. It opens
+a Win32 window, generates the island height field with the repository's linked
+CUDA `.cu` kernels using `nvcc`, and transfers CUDA-rendered frames to a Vulkan
+swapchain. This is an early native terrain viewer. The browser game above remains
+the playable survival version; menus, gathering, water simulation, grass, and
+saving have not yet been ported to the native viewer.
+
+Requirements: Windows, an NVIDIA GPU supported by CUDA 13, CUDA Toolkit 13,
+Vulkan SDK, Visual Studio 2026 C++ tools, CMake 3.26+, and Node.js 22+.
+Initialize the submodules before building:
+
+```powershell
+git submodule update --init --recursive
+.\start-native.bat
+```
+
+Or build manually with `cmake -S native -B .build/native -A x64` and
+`cmake --build .build/native --config Release`. The executable is
+`.build/native/Release/RealIslandNative.exe`. `WASD` moves, arrow keys look,
+`Q`/`E` descend/ascend, Shift moves faster, and Esc closes the window.
+
 ## Survival prototype
 
 The default page opens the first-person survival title menu. Start a new journey
